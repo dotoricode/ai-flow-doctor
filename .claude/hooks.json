@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "id": "afd-auto-heal",
+        "matcher": "",
+        "command": "bun run D:/00_work/ai-flow-doctor/src/cli.ts diagnose --format a2a --auto-heal"
+      }
+    ]
+  }
+}
