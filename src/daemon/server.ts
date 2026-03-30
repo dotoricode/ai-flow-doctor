@@ -1,0 +1,371 @@
+import { watch } from "chokidar";
+import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
+import { resolve } from "path";
+import { AFD_DIR, PID_FILE, PORT_FILE, WATCH_TARGETS } from "../constants";
+import { initDb } from "../core/db";
+import { generateHologram } from "../core/hologram";
+import { diagnose } from "../core/immune";
+import type { PatchOp } from "../core/immune";
+import { detectEcosystem } from "../adapters/index";
+import type { DetectionResult } from "../adapters/index";
+
+// ── Suppression Safety Constants ──
+const DOUBLE_TAP_WINDOW_MS = 60_000; // 60 seconds
+const MASS_EVENT_THRESHOLD = 3;       // >3 unlinks in 1 second
+const MASS_EVENT_WINDOW_MS = 1_000;   // 1 second window
+
+interface HologramStats {
+  totalRequests: number;
+  totalOriginalChars: number;
+  totalHologramChars: number;
+}
+
+interface DaemonState {
+  startedAt: number;
+  filesDetected: number;
+  lastEvent: string | null;
+  lastEventAt: number | null;
+  watchedFiles: string[];
+  hologramStats: HologramStats;
+  ecosystems: DetectionResult[];
+  autoHealCount: number;
+  autoHealLog: { id: string; at: number }[];
+  // Suppression safety: recent unlink timestamps for mass-event detection
+  recentUnlinks: number[];
+  // Suppression safety: per-file first-tap timestamps for double-tap detection
+  firstTapTimestamps: Map<string, number>;
+  suppressionSkippedCount: number;
+  dormantTransitions: { antibodyId: string; at: number }[];
+}
+
+const state: DaemonState = {
+  startedAt: Date.now(),
+  filesDetected: 0,
+  lastEvent: null,
+  lastEventAt: null,
+  watchedFiles: [],
+  hologramStats: { totalRequests: 0, totalOriginalChars: 0, totalHologramChars: 0 },
+  ecosystems: [],
+  autoHealCount: 0,
+  autoHealLog: [],
+  recentUnlinks: [],
+  firstTapTimestamps: new Map(),
+  suppressionSkippedCount: 0,
+  dormantTransitions: [],
+};
+
+function cleanup() {
+  try { unlinkSync(PID_FILE); } catch {}
+  try { unlinkSync(PORT_FILE); } catch {}
+}
+
+function main() {
+  // Detect ecosystem at startup
+  state.ecosystems = detectEcosystem(process.cwd());
+
+  const db = initDb();
+  const insertEvent = db.prepare("INSERT INTO events (type, path, timestamp) VALUES (?, ?, ?)");
+  const insertAntibody = db.prepare(
+    "INSERT OR REPLACE INTO antibodies (id, pattern_type, file_target, patch_op, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
+  );
+  const listAntibodies = db.prepare("SELECT * FROM antibodies ORDER BY created_at DESC");
+  const antibodyIds = db.prepare("SELECT id FROM antibodies WHERE dormant = 0");
+  const countAntibodies = db.prepare("SELECT COUNT(*) as cnt FROM antibodies");
+  const insertUnlinkLog = db.prepare("INSERT INTO unlink_log (file_path, timestamp) VALUES (?, ?)");
+  const findAntibodyByFile = db.prepare("SELECT id, dormant FROM antibodies WHERE file_target = ? AND dormant = 0");
+  const setAntibodyDormant = db.prepare("UPDATE antibodies SET dormant = 1 WHERE id = ?");
+
+  // ── Suppression Safety: Helper Functions ──
+
+  /** Check if we're in a mass-event burst (>3 unlinks within 1 second) */
+  function isMassEvent(now: number): boolean {
+    // Prune old entries beyond the window
+    state.recentUnlinks = state.recentUnlinks.filter(t => now - t < MASS_EVENT_WINDOW_MS);
+    return state.recentUnlinks.length > MASS_EVENT_THRESHOLD;
+  }
+
+  /** Clear first-tap state when mass event is detected (bulk ops are not intentional user deletes) */
+  function clearTapsOnMassEvent() {
+    state.firstTapTimestamps.clear();
+  }
+
+  /** Auto-heal: re-apply patches for a given antibody */
+  function autoHealFile(antibodyId: string, fileTarget: string, patchOp: string) {
+    try {
+      const patches = JSON.parse(patchOp) as PatchOp[];
+      for (const patch of patches) {
+        if (patch.op === "add" && patch.value) {
+          const targetPath = resolve(patch.path.replace(/^\//, ""));
+          writeFileSync(targetPath, patch.value, "utf-8");
+        }
+      }
+      state.autoHealCount++;
+      state.autoHealLog.push({ id: antibodyId, at: Date.now() });
+      if (state.autoHealLog.length > 100) state.autoHealLog.shift();
+    } catch {
+      // Crash-only: if healing fails, let it go
+    }
+  }
+
+  /**
+   * Handle unlink event with Double-Tap and Mass-Event heuristics.
+   * Returns true if the event was handled (healed or made dormant).
+   */
+  function handleUnlink(filePath: string, now: number): boolean {
+    // Record for mass-event detection
+    state.recentUnlinks.push(now);
+    insertUnlinkLog.run(filePath, now);
+
+    // Mass-event check: if >3 unlinks in 1s, skip ALL suppression logic
+    if (isMassEvent(now)) {
+      state.suppressionSkippedCount++;
+      clearTapsOnMassEvent();
+      return false; // Do nothing — likely git checkout or bulk operation
+    }
+
+    // Find active (non-dormant) antibody protecting this file
+    const antibody = findAntibodyByFile.get(filePath) as { id: string; dormant: number } | null;
+    if (!antibody) return false; // No antibody for this file
+
+    // Fetch full antibody data for healing
+    const fullAntibody = db.prepare("SELECT * FROM antibodies WHERE id = ?").get(antibody.id) as {
+      id: string; patch_op: string; file_target: string;
+    } | null;
+    if (!fullAntibody) return false;
+
+    // Double-Tap detection
+    const previousTap = state.firstTapTimestamps.get(filePath);
+
+    if (previousTap && (now - previousTap) < DOUBLE_TAP_WINDOW_MS) {
+      // SECOND TAP within window → user is intentional → make dormant
+      setAntibodyDormant.run(antibody.id);
+      state.firstTapTimestamps.delete(filePath);
+      state.dormantTransitions.push({ antibodyId: antibody.id, at: now });
+      return true; // Dormant — do NOT heal
+    }
+
+    // FIRST TAP: record timestamp and auto-heal
+    state.firstTapTimestamps.set(filePath, now);
+    autoHealFile(fullAntibody.id, fullAntibody.file_target, fullAntibody.patch_op);
+    return true;
+  }
+
+  // File watcher
+  const watcher = watch(WATCH_TARGETS, {
+    ignoreInitial: false,
+    persistent: true,
+  });
+
+  watcher.on("all", (event, path) => {
+    state.filesDetected++;
+    state.lastEvent = `${event}:${path}`;
+    state.lastEventAt = Date.now();
+    if (!state.watchedFiles.includes(path)) {
+      state.watchedFiles.push(path);
+    }
+    insertEvent.run(event, path, Date.now());
+
+    // Suppression safety: handle unlink events
+    if (event === "unlink") {
+      handleUnlink(path, Date.now());
+    }
+  });
+
+  // HTTP server for IPC
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      if (url.pathname === "/health") {
+        return Response.json({ status: "alive", pid: process.pid });
+      }
+
+      if (url.pathname === "/mini-status") {
+        const last = state.autoHealLog.length > 0
+          ? state.autoHealLog[state.autoHealLog.length - 1].id
+          : null;
+        return Response.json({
+          status: "ON",
+          healed_count: state.autoHealCount,
+          last_healed: last,
+        });
+      }
+
+      if (url.pathname === "/hologram") {
+        const file = url.searchParams.get("file");
+        if (!file) return Response.json({ error: "?file= required" }, { status: 400 });
+        try {
+          const absPath = resolve(file);
+          const source = readFileSync(absPath, "utf-8");
+          const result = generateHologram(file, source);
+          state.hologramStats.totalRequests++;
+          state.hologramStats.totalOriginalChars += result.originalLength;
+          state.hologramStats.totalHologramChars += result.hologramLength;
+          return Response.json(result);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: 404 });
+        }
+      }
+
+      if (url.pathname === "/diagnose") {
+        const raw = url.searchParams.get("raw") === "true";
+        const known = (antibodyIds.all() as { id: string }[]).map(r => r.id);
+        const result = diagnose(known, { raw });
+        return Response.json(result);
+      }
+
+      if (url.pathname === "/antibodies") {
+        const rows = listAntibodies.all();
+        return Response.json({ antibodies: rows });
+      }
+
+      if (url.pathname === "/antibodies/learn" && req.method === "POST") {
+        try {
+          const body = await req.json() as {
+            id: string;
+            patternType: string;
+            fileTarget: string;
+            patches: PatchOp[];
+          };
+          insertAntibody.run(
+            body.id,
+            body.patternType,
+            body.fileTarget,
+            JSON.stringify(body.patches)
+          );
+          return Response.json({ status: "learned", id: body.id });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: 400 });
+        }
+      }
+
+      if (url.pathname === "/auto-heal/record" && req.method === "POST") {
+        try {
+          const body = await req.json() as { id: string };
+          state.autoHealCount++;
+          state.autoHealLog.push({ id: body.id, at: Date.now() });
+          // Keep log bounded
+          if (state.autoHealLog.length > 100) state.autoHealLog.shift();
+          return Response.json({ status: "recorded", total: state.autoHealCount });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: 400 });
+        }
+      }
+
+      if (url.pathname === "/score") {
+        const uptime = Math.floor((Date.now() - state.startedAt) / 1000);
+        const eventCount = db.query("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
+        const abCount = countAntibodies.get() as { cnt: number };
+        const hs = state.hologramStats;
+        const globalSavings = hs.totalOriginalChars > 0
+          ? Math.round((hs.totalOriginalChars - hs.totalHologramChars) / hs.totalOriginalChars * 1000) / 10
+          : 0;
+        return Response.json({
+          uptime,
+          filesDetected: state.filesDetected,
+          totalEvents: eventCount.cnt,
+          lastEvent: state.lastEvent,
+          lastEventAt: state.lastEventAt,
+          watchedFiles: state.watchedFiles,
+          watchTargets: WATCH_TARGETS,
+          hologram: {
+            requests: hs.totalRequests,
+            originalChars: hs.totalOriginalChars,
+            hologramChars: hs.totalHologramChars,
+            savings: globalSavings,
+          },
+          immune: {
+            antibodies: abCount.cnt,
+            autoHealed: state.autoHealCount,
+            lastAutoHeal: state.autoHealLog.length > 0
+              ? state.autoHealLog[state.autoHealLog.length - 1]
+              : null,
+          },
+          ecosystem: {
+            detected: state.ecosystems.map(e => ({
+              name: e.adapter.name,
+              confidence: e.confidence,
+              schema: e.adapter.getHarnessSchema(),
+            })),
+            primary: state.ecosystems[0]?.adapter.name ?? "Unknown",
+          },
+          suppression: {
+            massEventsSkipped: state.suppressionSkippedCount,
+            dormantTransitions: state.dormantTransitions.length,
+            activeTaps: state.firstTapTimestamps.size,
+          },
+        });
+      }
+
+      if (url.pathname === "/sync") {
+        const rows = listAntibodies.all() as {
+          id: string;
+          pattern_type: string;
+          file_target: string;
+          patch_op: string;
+          created_at: string;
+        }[];
+        // Sanitize: strip absolute paths, keep only relative patterns
+        const sanitized = rows.map(r => {
+          const patches = JSON.parse(r.patch_op) as PatchOp[];
+          const cleanPatches = patches.map(p => ({
+            ...p,
+            // Ensure paths are relative (strip any leading drive/abs prefix)
+            path: p.path.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"),
+            // Strip absolute paths from values
+            value: p.value?.replace(/[A-Za-z]:\\[^\s"']*/g, "<redacted>"),
+          }));
+          return {
+            id: r.id,
+            patternType: r.pattern_type,
+            fileTarget: r.file_target.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"),
+            patches: cleanPatches,
+            learnedAt: r.created_at,
+          };
+        });
+        const payload = {
+          version: "0.1.0",
+          generatedAt: new Date().toISOString(),
+          ecosystem: state.ecosystems[0]?.adapter.name ?? "Unknown",
+          antibodyCount: sanitized.length,
+          antibodies: sanitized,
+        };
+        // Write payload to disk
+        const payloadPath = resolve(AFD_DIR, "global-vaccine-payload.json");
+        writeFileSync(payloadPath, JSON.stringify(payload, null, 2), "utf-8");
+        return Response.json({ status: "exported", path: payloadPath, count: sanitized.length });
+      }
+
+      if (url.pathname === "/stop") {
+        cleanup();
+        setTimeout(() => process.exit(0), 100);
+        return Response.json({ status: "stopping" });
+      }
+
+      return Response.json({ error: "not found" }, { status: 404 });
+    },
+  });
+
+  const port = server.port;
+
+  mkdirSync(AFD_DIR, { recursive: true });
+  writeFileSync(PID_FILE, String(process.pid));
+  writeFileSync(PORT_FILE, String(port));
+
+  console.log(`[afd daemon] pid=${process.pid} port=${port}`);
+
+  process.on("uncaughtException", (err) => {
+    console.error("[afd daemon] FATAL:", err.message);
+    cleanup();
+    process.exit(1);
+  });
+
+  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+  process.on("SIGINT", () => { cleanup(); process.exit(0); });
+}
+
+main();
