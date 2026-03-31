@@ -26,8 +26,9 @@
     "dev-tools"
   ],
   "scripts": {
-    "start": "bun run src/cli.ts start",
-    "dev": "bun run src/cli.ts",
+    "dev": "bun --watch src/cli.ts",
+    "score": "bun src/cli.ts score",
+    "start": "bun src/cli.ts start",
     "test": "bun test"
   },
   "dependencies": {

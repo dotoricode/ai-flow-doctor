@@ -1,5 +1,6 @@
 import { platform } from "os";
 import type { SpawnOptions } from "child_process";
+import { execSync } from "child_process";
 
 export const IS_WINDOWS = platform() === "win32";
 export const IS_MACOS = platform() === "darwin";
@@ -28,12 +29,32 @@ export function detachedSpawnOptions(
   return base;
 }
 
+const DIAGNOSE_ARGS = "diagnose --format a2a --auto-heal";
+
 /**
  * Resolve the hook command for invoking afd diagnose.
  * Priority:
  *   1. Global `afd` binary (npm/bun global install)
- *   2. `bunx afd` fallback
+ *   2. `bunx afd` fallback (Bun environment)
+ *   3. `npx afd` fallback (Node environment)
  */
 export function resolveHookCommand(): string {
-  return "afd diagnose --format a2a --auto-heal";
+  if (isCommandAvailable("afd")) {
+    return `afd ${DIAGNOSE_ARGS}`;
+  }
+  if (isCommandAvailable("bunx")) {
+    return `bunx afd ${DIAGNOSE_ARGS}`;
+  }
+  return `npx -y afd ${DIAGNOSE_ARGS}`;
+}
+
+/** Check if a command exists on the system PATH */
+function isCommandAvailable(cmd: string): boolean {
+  try {
+    const check = IS_WINDOWS ? `where ${cmd}` : `command -v ${cmd}`;
+    execSync(check, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }

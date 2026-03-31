@@ -5,6 +5,7 @@ import { getDaemonInfo, isDaemonAlive } from "../daemon/client";
 import { AFD_DIR, LOG_FILE, WATCH_TARGETS } from "../constants";
 import { detectEcosystem } from "../adapters/index";
 import { detachedSpawnOptions, IS_WINDOWS } from "../platform";
+import { rotateLogIfNeeded } from "../core/log-rotate";
 import { getSystemLanguage } from "../core/locale";
 import { getMessages, t } from "../core/i18n/messages";
 import { discoverWatchTargets } from "../core/discovery";
@@ -35,6 +36,7 @@ export async function startCommand(options?: { mcp?: boolean }) {
   // ── Spawn detached daemon with log redirection ──
   const daemonScript = resolve(import.meta.dirname, "../daemon/server.ts");
   const logPath = resolve(LOG_FILE);
+  rotateLogIfNeeded(logPath);
   const logFd = openSync(logPath, "a"); // append mode
 
   // On Windows, wrap in shell for proper detach; quote path for spaces

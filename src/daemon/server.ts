@@ -10,6 +10,7 @@ import { detectEcosystem } from "../adapters/index";
 import type { DetectionResult } from "../adapters/index";
 import { calcHealMetrics, maybeHealBoast, formatHealLog, formatDormantLog, buildShiftSummary } from "../core/boast";
 import { discoverWatchTargets } from "../core/discovery";
+import { formatTimestamp, lineDiff } from "../core/log-utils";
 
 // ── Suppression Safety Constants ──
 const DOUBLE_TAP_WINDOW_MS = 30_000;  // 30 seconds — balances demo speed and production safety
@@ -87,39 +88,8 @@ export function main(options: DaemonOptions = {}) {
   const setAntibodyDormant = db.prepare("UPDATE antibodies SET dormant = 1 WHERE id = ?");
 
   // ── S.E.A.M Cycle Logger ──
-  function ts(): string {
-    const d = new Date();
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-    const ms = String(d.getMilliseconds()).padStart(3, "0");
-    return `${hh}:${mm}:${ss}.${ms}`;
-  }
-
   function seam(phase: string, msg: string) {
-    console.log(`[${ts()}] [afd] [${phase}] ${msg}`);
-  }
-
-  /** Build a concise line-diff between old and new content (max 10 lines) */
-  function lineDiff(oldText: string, newText: string): string[] {
-    const oldLines = oldText.split("\n");
-    const newLines = newText.split("\n");
-    const diffs: string[] = [];
-    const maxLen = Math.max(oldLines.length, newLines.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (oldLines[i] !== newLines[i]) {
-        const ln = i + 1;
-        if (i < oldLines.length && i < newLines.length) {
-          diffs.push(`  L${ln}: "${oldLines[i].trimEnd()}" → "${newLines[i].trimEnd()}"`);
-        } else if (i < oldLines.length) {
-          diffs.push(`  L${ln}: - "${oldLines[i].trimEnd()}"`);
-        } else {
-          diffs.push(`  L${ln}: + "${newLines[i]!.trimEnd()}"`);
-        }
-      }
-      if (diffs.length >= 10) { diffs.push("  ... (truncated)"); break; }
-    }
-    return diffs;
+    console.log(`[${formatTimestamp()}] [afd] [${phase}] ${msg}`);
   }
 
   /** Snapshot a file's content into memory for future diff */
