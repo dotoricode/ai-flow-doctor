@@ -8,6 +8,7 @@ import { diagnose } from "../core/immune";
 import type { PatchOp } from "../core/immune";
 import { detectEcosystem } from "../adapters/index";
 import type { DetectionResult } from "../adapters/index";
+import { calcHealMetrics, maybeHealBoast, formatHealLog, formatDormantLog, buildShiftSummary } from "../core/boast";
 
 // ── Suppression Safety Constants ──
 const DOUBLE_TAP_WINDOW_MS = 60_000; // 60 seconds
@@ -36,6 +37,7 @@ interface DaemonState {
   firstTapTimestamps: Map<string, number>;
   suppressionSkippedCount: number;
   dormantTransitions: { antibodyId: string; at: number }[];
+  totalFileBytesSaved: number;
 }
 
 const state: DaemonState = {
@@ -52,6 +54,7 @@ const state: DaemonState = {
   firstTapTimestamps: new Map(),
   suppressionSkippedCount: 0,
   dormantTransitions: [],
+  totalFileBytesSaved: 0,
 };
 
 function cleanup() {
@@ -59,7 +62,11 @@ function cleanup() {
   try { unlinkSync(PORT_FILE); } catch {}
 }
 
-function main() {
+interface DaemonOptions {
+  mcp?: boolean;
+}
+
+export function main(options: DaemonOptions = {}) {
   // Detect ecosystem at startup
   state.ecosystems = detectEcosystem(process.cwd());
 
@@ -89,19 +96,30 @@ function main() {
     state.firstTapTimestamps.clear();
   }
 
-  /** Auto-heal: re-apply patches for a given antibody */
+  /** Auto-heal: re-apply patches for a given antibody, with metrics & boast */
   function autoHealFile(antibodyId: string, fileTarget: string, patchOp: string) {
+    const t0 = performance.now();
     try {
       const patches = JSON.parse(patchOp) as PatchOp[];
+      let bytesWritten = 0;
       for (const patch of patches) {
         if (patch.op === "add" && patch.value) {
           const targetPath = resolve(patch.path.replace(/^\//, ""));
           writeFileSync(targetPath, patch.value, "utf-8");
+          bytesWritten += patch.value.length;
         }
       }
+      const healMs = Math.round(performance.now() - t0);
       state.autoHealCount++;
+      state.totalFileBytesSaved += bytesWritten;
       state.autoHealLog.push({ id: antibodyId, at: Date.now() });
       if (state.autoHealLog.length > 100) state.autoHealLog.shift();
+
+      // Delightful logging: metrics + occasional boast
+      const metrics = calcHealMetrics(bytesWritten, healMs);
+      const boast = maybeHealBoast(5); // 1-in-5 chance
+      const fileName = fileTarget.split("/").pop() ?? fileTarget;
+      console.log(formatHealLog(fileName, metrics, boast));
     } catch {
       // Crash-only: if healing fails, let it go
     }
@@ -141,6 +159,7 @@ function main() {
       setAntibodyDormant.run(antibody.id);
       state.firstTapTimestamps.delete(filePath);
       state.dormantTransitions.push({ antibodyId: antibody.id, at: now });
+      console.log(formatDormantLog(antibody.id));
       return true; // Dormant — do NOT heal
     }
 
@@ -170,6 +189,36 @@ function main() {
       handleUnlink(path, Date.now());
     }
   });
+
+  // ── MCP stdio mode: JSON-RPC over stdin/stdout ──
+  if (options.mcp) {
+    console.error("[afd] MCP stdio mode — awaiting JSON-RPC on stdin");
+    (async () => {
+      const decoder = new TextDecoder();
+      for await (const chunk of Bun.stdin.stream()) {
+        const line = decoder.decode(chunk).trim();
+        if (!line) continue;
+        try {
+          const req = JSON.parse(line);
+          const response = {
+            jsonrpc: "2.0",
+            id: req.id,
+            result: {
+              tools: [
+                { name: "afd_diagnose", description: "Run afd health diagnosis" },
+                { name: "afd_score", description: "Get daemon score/stats" },
+                { name: "afd_hologram", description: "Generate hologram for a file" },
+              ],
+            },
+          };
+          process.stdout.write(JSON.stringify(response) + "\n");
+        } catch {
+          // Crash-only: malformed input is ignored
+        }
+      }
+    })();
+    return; // file watcher + stdin loop keep process alive
+  }
 
   // HTTP server for IPC
   const server = Bun.serve({
@@ -340,6 +389,20 @@ function main() {
         return Response.json({ status: "exported", path: payloadPath, count: sanitized.length });
       }
 
+      if (url.pathname === "/shift-summary") {
+        const uptime = Math.floor((Date.now() - state.startedAt) / 1000);
+        const eventCount = db.query("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
+        const summary = buildShiftSummary({
+          uptimeSeconds: uptime,
+          totalEvents: eventCount.cnt,
+          healsPerformed: state.autoHealCount,
+          totalFileBytesSaved: state.totalFileBytesSaved,
+          suppressionsSkipped: state.suppressionSkippedCount,
+          dormantTransitions: state.dormantTransitions.length,
+        });
+        return Response.json(summary);
+      }
+
       if (url.pathname === "/stop") {
         cleanup();
         setTimeout(() => process.exit(0), 100);
@@ -368,4 +431,7 @@ function main() {
   process.on("SIGINT", () => { cleanup(); process.exit(0); });
 }
 
-main();
+// Auto-execute when run directly (not imported)
+if (import.meta.main) {
+  main();
+}

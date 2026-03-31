@@ -1,42 +1,60 @@
-import { spawn } from "child_process";
 import { resolve } from "path";
+import { spawn } from "child_process";
+import { openSync, mkdirSync } from "fs";
 import { getDaemonInfo, isDaemonAlive } from "../daemon/client";
-import { AFD_DIR } from "../constants";
-import { mkdirSync } from "fs";
+import { AFD_DIR, LOG_FILE } from "../constants";
 import { detectEcosystem } from "../adapters/index";
+import { detachedSpawnOptions, IS_WINDOWS } from "../platform";
+import { getSystemLanguage } from "../core/locale";
+import { getMessages, t } from "../core/i18n/messages";
 
-export async function startCommand() {
+const STARTUP_POLL_INTERVAL_MS = 100;
+const STARTUP_POLL_MAX_MS = 3000;
+
+export async function startCommand(options?: { mcp?: boolean }) {
+  // MCP stdio mode: run daemon in foreground with stdio transport
+  if (options?.mcp) {
+    const { main: runDaemon } = await import("../daemon/server");
+    runDaemon({ mcp: true });
+    return; // never reaches here — stdio loop blocks
+  }
+
+  const lang = getSystemLanguage();
+  const msg = getMessages(lang);
+
   mkdirSync(AFD_DIR, { recursive: true });
 
-  // Check if already running
+  // ── Idempotency: check if already running ──
   const existing = getDaemonInfo();
-  if (existing && await isDaemonAlive(existing)) {
-    console.log(`[afd] Daemon already running (pid=${existing.pid}, port=${existing.port})`);
+  if (existing && (await isDaemonAlive(existing))) {
+    console.log(msg.DAEMON_ALREADY_RUNNING);
     return;
   }
 
-  // Spawn detached daemon
+  // ── Spawn detached daemon with log redirection ──
   const daemonScript = resolve(import.meta.dirname, "../daemon/server.ts");
-  const bunPath = process.execPath;
+  const logPath = resolve(LOG_FILE);
+  const logFd = openSync(logPath, "a"); // append mode
 
-  const child = spawn(bunPath, ["run", daemonScript], {
-    detached: true,
-    stdio: ["ignore", "ignore", "ignore"],
-    cwd: process.cwd(),
-    env: { ...process.env },
-  });
+  // On Windows, wrap in shell for proper detach; quote path for spaces
+  const args = IS_WINDOWS
+    ? ["run", `"${daemonScript}"`]
+    : ["run", daemonScript];
 
+  const child = spawn("bun", args, detachedSpawnOptions(logFd));
+
+  // Detach: allow parent to exit without killing child
   child.unref();
 
-  // Wait for daemon to write its port file (Windows needs more time)
-  await new Promise((r) => setTimeout(r, 1500));
+  // ── Poll for daemon readiness instead of fixed sleep ──
+  const info = await pollForDaemon(STARTUP_POLL_MAX_MS, STARTUP_POLL_INTERVAL_MS);
 
-  const info = getDaemonInfo();
-  if (info && await isDaemonAlive(info)) {
-    console.log(`[afd] Daemon started (pid=${info.pid}, port=${info.port})`);
-    console.log(`[afd] Watching: .claude/, CLAUDE.md, .cursorrules`);
+  if (info) {
+    console.log(t(msg.DAEMON_STARTED, { pid: info.pid, port: info.port }));
+    console.log(msg.DAEMON_WATCHING);
+    console.log(t(msg.DAEMON_LOGS, { path: logPath }));
 
-    // Silently inject auto-heal hook and status line into detected ecosystem
+    // Inject hooks into detected ecosystems
     const ecosystems = detectEcosystem(process.cwd());
     for (const { adapter } of ecosystems) {
       if (adapter.injectHooks) {
@@ -49,7 +67,25 @@ export async function startCommand() {
       }
     }
   } else {
-    console.error("[afd] Failed to start daemon. Check logs.");
+    console.error(t(msg.DAEMON_START_FAILED, { path: logPath }));
     process.exit(1);
   }
+}
+
+/** Poll until daemon PID/port files appear and health check passes */
+async function pollForDaemon(
+  maxMs: number,
+  intervalMs: number,
+): Promise<{ pid: number; port: number } | null> {
+  const deadline = Date.now() + maxMs;
+
+  while (Date.now() < deadline) {
+    const info = getDaemonInfo();
+    if (info && (await isDaemonAlive(info))) {
+      return info;
+    }
+    await Bun.sleep(intervalMs);
+  }
+
+  return null;
 }

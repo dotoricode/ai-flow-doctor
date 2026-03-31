@@ -17,6 +17,7 @@ program
 program
   .command("start")
   .description("Start the afd daemon (background file watcher)")
+  .option("--mcp", "Run in MCP stdio mode (for Claude Code tool integration)")
   .action(startCommand);
 
 program
