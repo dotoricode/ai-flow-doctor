@@ -16,6 +16,8 @@ export interface EcosystemAdapter {
   injectHooks?(cwd: string): { injected: boolean; message: string };
   configureStatusLine?(cwd: string): { configured: boolean; message: string };
   registerMcp?(cwd: string): { registered: boolean; message: string };
+  removeHooks?(cwd: string): { removed: boolean; message: string };
+  unregisterMcp?(cwd: string): { removed: boolean; message: string };
 }
 
 const AFD_HOOK_MARKER = "afd-auto-heal";
@@ -153,6 +155,41 @@ export const ClaudeCodeAdapter: EcosystemAdapter = {
     config.mcpServers = mcpServers;
     writeFileSync(mcpPath, JSON.stringify(config, null, 2), "utf-8");
     return { registered: true, message: "MCP server 'afd' registered in .mcp.json" };
+  },
+  removeHooks(cwd: string): { removed: boolean; message: string } {
+    const hooksPath = join(cwd, ".claude", "hooks.json");
+    if (!existsSync(hooksPath)) {
+      return { removed: false, message: "No hooks file found" };
+    }
+    try {
+      const config: HooksConfig = JSON.parse(readFileSync(hooksPath, "utf-8"));
+      const arr = config.hooks?.PreToolUse;
+      if (!arr) return { removed: false, message: "No PreToolUse hooks" };
+      const idx = arr.findIndex((h: HookEntry) => h.id === AFD_HOOK_MARKER);
+      if (idx === -1) return { removed: false, message: "Hook not found" };
+      arr.splice(idx, 1);
+      writeFileSync(hooksPath, JSON.stringify(config, null, 2), "utf-8");
+      return { removed: true, message: "Auto-heal hook removed from PreToolUse" };
+    } catch {
+      return { removed: false, message: "Failed to parse hooks file" };
+    }
+  },
+  unregisterMcp(cwd: string): { removed: boolean; message: string } {
+    const mcpPath = join(cwd, ".mcp.json");
+    if (!existsSync(mcpPath)) {
+      return { removed: false, message: "No .mcp.json found" };
+    }
+    try {
+      const config = JSON.parse(readFileSync(mcpPath, "utf-8"));
+      const servers = config.mcpServers as Record<string, unknown> | undefined;
+      if (!servers?.afd) return { removed: false, message: "afd not in .mcp.json" };
+      delete servers.afd;
+      if (Object.keys(servers).length === 0) delete config.mcpServers;
+      writeFileSync(mcpPath, JSON.stringify(config, null, 2), "utf-8");
+      return { removed: true, message: "MCP server 'afd' removed from .mcp.json" };
+    } catch {
+      return { removed: false, message: "Failed to parse .mcp.json" };
+    }
   },
 };
 

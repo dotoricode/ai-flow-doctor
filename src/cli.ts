@@ -29,6 +29,7 @@ program
 program
   .command("stop")
   .description("Stop the afd daemon")
+  .option("--clean", "Remove all injected hooks and MCP registrations")
   .action(stopCommand);
 
 program

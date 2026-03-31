@@ -81,6 +81,18 @@ export interface MessageDict {
   DAEMON_NOT_RUNNING: string;
   DAEMON_NOT_RESPONDING: string;
   DAEMON_START_FAILED: string; // "{path}"
+
+  // ── Setup checklist ──
+  SETUP_HEADER: string;         // "{ecosystem}"
+  SETUP_HOOKS_NEW: string;
+  SETUP_HOOKS_OK: string;
+  SETUP_MCP_NEW: string;
+  SETUP_MCP_OK: string;
+  SETUP_MCP_SKIP: string;
+  SETUP_STATUS_NEW: string;
+  SETUP_STATUS_OK: string;
+  SETUP_STATUS_SKIP: string;
+  SETUP_DONE: string;
 }
 
 const en: MessageDict = {
@@ -167,6 +179,17 @@ const en: MessageDict = {
   DAEMON_NOT_RUNNING: "[afd] No daemon running.",
   DAEMON_NOT_RESPONDING: "[afd] Daemon not responding. Cleaning up stale PID files.",
   DAEMON_START_FAILED: "[afd] Failed to start daemon. Check logs: {path}",
+
+  SETUP_HEADER: "[afd] Setting up {ecosystem} ecosystem:",
+  SETUP_HOOKS_NEW: "  [+] Hook injected into PreToolUse",
+  SETUP_HOOKS_OK: "  [=] Hook already present",
+  SETUP_MCP_NEW: "  [+] MCP server registered in .mcp.json",
+  SETUP_MCP_OK: "  [=] MCP server already registered",
+  SETUP_MCP_SKIP: "  [-] MCP registration not available",
+  SETUP_STATUS_NEW: "  [+] StatusLine configured",
+  SETUP_STATUS_OK: "  [=] StatusLine already configured",
+  SETUP_STATUS_SKIP: "  [-] StatusLine not available",
+  SETUP_DONE: "[afd] Zero-touch setup complete. All channels active.",
 };
 
 const ko: MessageDict = {
@@ -253,6 +276,17 @@ const ko: MessageDict = {
   DAEMON_NOT_RUNNING: "[afd] 실행 중인 데몬을 찾을 수 없습니다.",
   DAEMON_NOT_RESPONDING: "[afd] 데몬이 응답하지 않네요. 남은 PID 파일을 정리합니다.",
   DAEMON_START_FAILED: "[afd] 데몬 시작 실패. 로그를 확인해 보세요: {path}",
+
+  SETUP_HEADER: "[afd] {ecosystem} 에코시스템 설정 중:",
+  SETUP_HOOKS_NEW: "  [+] PreToolUse 훅 주입 완료",
+  SETUP_HOOKS_OK: "  [=] 훅 이미 설정됨",
+  SETUP_MCP_NEW: "  [+] MCP 서버 등록 완료 (.mcp.json)",
+  SETUP_MCP_OK: "  [=] MCP 서버 이미 등록됨",
+  SETUP_MCP_SKIP: "  [-] MCP 등록 미지원",
+  SETUP_STATUS_NEW: "  [+] StatusLine 설정 완료",
+  SETUP_STATUS_OK: "  [=] StatusLine 이미 설정됨",
+  SETUP_STATUS_SKIP: "  [-] StatusLine 미지원",
+  SETUP_DONE: "[afd] 제로터치 설정 완료. 모든 채널 활성화.",
 };
 
 const dictionaries: Record<SupportedLang, MessageDict> = { en, ko };

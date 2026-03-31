@@ -4,14 +4,80 @@ import { openSync, mkdirSync } from "fs";
 import { getDaemonInfo, isDaemonAlive } from "../daemon/client";
 import { AFD_DIR, LOG_FILE, WATCH_TARGETS } from "../constants";
 import { detectEcosystem } from "../adapters/index";
+import type { DetectionResult } from "../adapters/index";
 import { detachedSpawnOptions, IS_WINDOWS } from "../platform";
 import { rotateLogIfNeeded } from "../core/log-rotate";
 import { getSystemLanguage } from "../core/locale";
 import { getMessages, t } from "../core/i18n/messages";
+import type { MessageDict } from "../core/i18n/messages";
 import { discoverWatchTargets } from "../core/discovery";
 
 const STARTUP_POLL_INTERVAL_MS = 100;
 const STARTUP_POLL_MAX_MS = 3000;
+
+interface SetupStep {
+  label: string;
+  newMsg: string;
+  okMsg: string;
+  skipMsg: string;
+}
+
+interface SetupResult {
+  ecosystem: string;
+  steps: { label: string; status: "new" | "ok" | "skip" }[];
+}
+
+/**
+ * One-Command Zero-Touch: detect ecosystem and provision all integration
+ * channels (hooks, MCP, statusLine) with idempotency.
+ */
+function setupEcosystem(cwd: string, msg: MessageDict): SetupResult[] {
+  const ecosystems = detectEcosystem(cwd);
+  const results: SetupResult[] = [];
+
+  for (const { adapter } of ecosystems) {
+    console.log(t(msg.SETUP_HEADER, { ecosystem: adapter.name }));
+    const steps: SetupResult["steps"] = [];
+
+    // 1. Hook injection
+    if (adapter.injectHooks) {
+      const r = adapter.injectHooks(cwd);
+      const status = r.injected ? "new" : "ok";
+      console.log(status === "new" ? msg.SETUP_HOOKS_NEW : msg.SETUP_HOOKS_OK);
+      steps.push({ label: "hooks", status });
+    }
+
+    // 2. MCP registration
+    if (adapter.registerMcp) {
+      const r = adapter.registerMcp(cwd);
+      const status = r.registered ? "new" : "ok";
+      console.log(status === "new" ? msg.SETUP_MCP_NEW : msg.SETUP_MCP_OK);
+      steps.push({ label: "mcp", status });
+    } else {
+      console.log(msg.SETUP_MCP_SKIP);
+      steps.push({ label: "mcp", status: "skip" });
+    }
+
+    // 3. StatusLine configuration
+    if (adapter.configureStatusLine) {
+      const r = adapter.configureStatusLine(cwd);
+      const status = r.configured ? "new" : "ok";
+      console.log(status === "new" ? msg.SETUP_STATUS_NEW : msg.SETUP_STATUS_OK);
+      steps.push({ label: "statusLine", status });
+    } else {
+      console.log(msg.SETUP_STATUS_SKIP);
+      steps.push({ label: "statusLine", status: "skip" });
+    }
+
+    results.push({ ecosystem: adapter.name, steps });
+  }
+
+  if (ecosystems.length > 0) {
+    console.log(msg.SETUP_DONE);
+  }
+
+  return results;
+}
 
 export async function startCommand(options?: { mcp?: boolean }) {
   // MCP stdio mode: run daemon in foreground with stdio transport
@@ -61,22 +127,8 @@ export async function startCommand(options?: { mcp?: boolean }) {
     console.log(`[afd] Targets: ${discovery.targets.join(", ")}`);
     console.log(t(msg.DAEMON_LOGS, { path: logPath }));
 
-    // Inject hooks into detected ecosystems
-    const ecosystems = detectEcosystem(process.cwd());
-    for (const { adapter } of ecosystems) {
-      if (adapter.injectHooks) {
-        const hookResult = adapter.injectHooks(process.cwd());
-        console.log(`[afd] ${hookResult.message}`);
-      }
-      if (adapter.configureStatusLine) {
-        const slResult = adapter.configureStatusLine(process.cwd());
-        if (slResult.configured) console.log(`[afd] ${slResult.message}`);
-      }
-      if (adapter.registerMcp) {
-        const mcpResult = adapter.registerMcp(process.cwd());
-        if (mcpResult.registered) console.log(`[afd] ${mcpResult.message}`);
-      }
-    }
+    // One-Command Zero-Touch: auto-provision all ecosystem integrations
+    setupEcosystem(process.cwd(), msg);
   } else {
     console.error(t(msg.DAEMON_START_FAILED, { path: logPath }));
     process.exit(1);

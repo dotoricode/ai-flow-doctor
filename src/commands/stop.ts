@@ -5,13 +5,14 @@ import { formatShiftSummary } from "../core/boast";
 import type { ShiftSummary } from "../core/boast";
 import { getSystemLanguage } from "../core/locale";
 import { getMessages, t } from "../core/i18n/messages";
+import { detectEcosystem } from "../adapters/index";
 
 function cleanupFiles() {
   try { unlinkSync(PID_FILE); } catch {}
   try { unlinkSync(PORT_FILE); } catch {}
 }
 
-export async function stopCommand() {
+export async function stopCommand(options?: { clean?: boolean }) {
   const lang = getSystemLanguage();
   const msg = getMessages(lang);
   const info = getDaemonInfo();
@@ -46,4 +47,21 @@ export async function stopCommand() {
   }
 
   cleanupFiles();
+
+  // --clean: remove injected hooks and MCP registration
+  if (options?.clean) {
+    const cwd = process.cwd();
+    const ecosystems = detectEcosystem(cwd);
+    for (const { adapter } of ecosystems) {
+      if (adapter.removeHooks) {
+        const r = adapter.removeHooks(cwd);
+        if (r.removed) console.log(`[afd] ${r.message}`);
+      }
+      if (adapter.unregisterMcp) {
+        const r = adapter.unregisterMcp(cwd);
+        if (r.removed) console.log(`[afd] ${r.message}`);
+      }
+    }
+    console.log("[afd] Clean stop complete. All afd integrations removed.");
+  }
 }
