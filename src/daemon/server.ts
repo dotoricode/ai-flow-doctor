@@ -39,6 +39,8 @@ interface DaemonState {
   suppressionSkippedCount: number;
   dormantTransitions: { antibodyId: string; at: number }[];
   totalFileBytesSaved: number;
+  /** In-memory snapshot of watched file contents for diff on change */
+  fileSnapshots: Map<string, string>;
 }
 
 const state: DaemonState = {
@@ -56,6 +58,7 @@ const state: DaemonState = {
   suppressionSkippedCount: 0,
   dormantTransitions: [],
   totalFileBytesSaved: 0,
+  fileSnapshots: new Map(),
 };
 
 function cleanup() {
@@ -84,8 +87,48 @@ export function main(options: DaemonOptions = {}) {
   const setAntibodyDormant = db.prepare("UPDATE antibodies SET dormant = 1 WHERE id = ?");
 
   // ── S.E.A.M Cycle Logger ──
+  function ts(): string {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    const ms = String(d.getMilliseconds()).padStart(3, "0");
+    return `${hh}:${mm}:${ss}.${ms}`;
+  }
+
   function seam(phase: string, msg: string) {
-    console.log(`[afd] [${phase}] ${msg}`);
+    console.log(`[${ts()}] [afd] [${phase}] ${msg}`);
+  }
+
+  /** Build a concise line-diff between old and new content (max 10 lines) */
+  function lineDiff(oldText: string, newText: string): string[] {
+    const oldLines = oldText.split("\n");
+    const newLines = newText.split("\n");
+    const diffs: string[] = [];
+    const maxLen = Math.max(oldLines.length, newLines.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (oldLines[i] !== newLines[i]) {
+        const ln = i + 1;
+        if (i < oldLines.length && i < newLines.length) {
+          diffs.push(`  L${ln}: "${oldLines[i].trimEnd()}" → "${newLines[i].trimEnd()}"`);
+        } else if (i < oldLines.length) {
+          diffs.push(`  L${ln}: - "${oldLines[i].trimEnd()}"`);
+        } else {
+          diffs.push(`  L${ln}: + "${newLines[i]!.trimEnd()}"`);
+        }
+      }
+      if (diffs.length >= 10) { diffs.push("  ... (truncated)"); break; }
+    }
+    return diffs;
+  }
+
+  /** Snapshot a file's content into memory for future diff */
+  function snapshotFile(filePath: string) {
+    try {
+      if (existsSync(filePath)) {
+        state.fileSnapshots.set(filePath, readFileSync(filePath, "utf-8"));
+      }
+    } catch { /* ignore unreadable files */ }
   }
 
   // ── Auto-Seed Antibodies on Startup ──
@@ -102,6 +145,7 @@ export function main(options: DaemonOptions = {}) {
         const content = readFileSync(filePath, "utf-8");
         const patches: PatchOp[] = [{ op: "add", path: `/${filePath}`, value: content }];
         insertAntibody.run(id, "auto-seed", filePath, JSON.stringify(patches));
+        state.fileSnapshots.set(filePath, content);
         seam("Adapt", `Antibody ${id} seeded for ${filePath} (${content.length} bytes)`);
       }
     }
@@ -216,6 +260,12 @@ export function main(options: DaemonOptions = {}) {
     atomic: 100,
   });
 
+  const immuneMap: Record<string, string> = {
+    ".claudeignore": "IMM-001",
+    ".claude/hooks.json": "IMM-002",
+    "CLAUDE.md": "IMM-003",
+  };
+
   watcher.on("all", (event, path) => {
     state.filesDetected++;
     state.lastEvent = `${event}:${path}`;
@@ -225,36 +275,66 @@ export function main(options: DaemonOptions = {}) {
     }
     insertEvent.run(event, path, Date.now());
 
-    // S.E.A.M cycle logging
-    seam("Sense", `${event} → ${path}`);
+    // ── add / addDir: take initial snapshot ──
+    if (event === "add" || event === "addDir") {
+      seam("Sense", `${event} → ${path}`);
+      snapshotFile(path);
+      return;
+    }
 
+    // ── unlink: antibody restore / dormant ──
     if (event === "unlink") {
-      seam("Extract", `File deleted: ${path} — checking antibodies`);
+      seam("Sense", `unlink → ${path}`);
+      state.fileSnapshots.delete(path);
       const result = handleUnlink(path, Date.now());
       if (result === "healed") {
-        seam("Mutate", `Restore complete for ${path}`);
-        // Re-add to watcher so future deletes are detected
+        seam("Mutate", `Restored ${path} from antibody snapshot`);
+        snapshotFile(path);
         watcher.add(path);
       } else if (result === "dormant") {
-        seam("Adapt", `Double-tap confirmed — ${path} deletion honored`);
-      } else {
-        seam("Extract", `No antibody found for ${path} — skipped`);
+        seam("Adapt", `Double-tap confirmed — user intentionally deleted ${path}, antibody deactivated`);
       }
-    } else if (event === "change") {
-      // Re-seed antibody on file change so restore always has latest content
-      const immuneMap: Record<string, string> = {
-        ".claudeignore": "IMM-001",
-        ".claude/hooks.json": "IMM-002",
-        "CLAUDE.md": "IMM-003",
-      };
-      const abId = immuneMap[path];
-      if (abId && existsSync(path)) {
-        const content = readFileSync(path, "utf-8");
-        const patches: PatchOp[] = [{ op: "add", path: `/${path}`, value: content }];
-        insertAntibody.run(abId, "auto-seed", path, JSON.stringify(patches));
-        seam("Adapt", `Antibody ${abId} refreshed for ${path}`);
-      }
+      return;
     }
+
+    // ── change: diff against previous snapshot, then update ──
+    if (event === "change") {
+      if (!existsSync(path)) return;
+
+      let newContent: string;
+      try { newContent = readFileSync(path, "utf-8"); } catch { return; }
+
+      const oldContent = state.fileSnapshots.get(path);
+      const newSize = newContent.length;
+
+      if (oldContent !== undefined && oldContent !== newContent) {
+        const diffs = lineDiff(oldContent, newContent);
+        if (diffs.length > 0) {
+          seam("Sense", `change → ${path} (${newSize} bytes)\n${diffs.join("\n")}`);
+        } else {
+          seam("Sense", `change → ${path} (${newSize} bytes, whitespace-only diff)`);
+        }
+      } else if (oldContent === undefined) {
+        seam("Sense", `change → ${path} (${newSize} bytes, no previous snapshot)`);
+      } else {
+        seam("Sense", `change → ${path} (${newSize} bytes, content identical — touch or metadata)`);
+      }
+
+      // Update in-memory snapshot
+      state.fileSnapshots.set(path, newContent);
+
+      // Re-seed antibody if this is an immune-critical file
+      const abId = immuneMap[path];
+      if (abId) {
+        const patches: PatchOp[] = [{ op: "add", path: `/${path}`, value: newContent }];
+        insertAntibody.run(abId, "auto-seed", path, JSON.stringify(patches));
+        seam("Adapt", `Antibody ${abId} updated: stored latest ${path} (${newSize} bytes) for auto-restore`);
+      }
+      return;
+    }
+
+    // ── unlinkDir, other events ──
+    seam("Sense", `${event} → ${path}`);
   });
 
   // ── MCP stdio mode: JSON-RPC over stdin/stdout ──
