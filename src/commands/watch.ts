@@ -20,6 +20,7 @@ const msgs = {
     hologram: "Hologram",
     ecosystem: "Ecosystem",
     liveEvents: "Live Events",
+    evolution: "Evolution",
     quit: "Press Ctrl+C to quit",
     noEvents: "Waiting for events...",
   },
@@ -34,6 +35,7 @@ const msgs = {
     hologram: "홀로그램",
     ecosystem: "에코시스템",
     liveEvents: "실시간 이벤트",
+    evolution: "진화 상태",
     quit: "Ctrl+C로 종료",
     noEvents: "이벤트 대기 중...",
   },
@@ -79,6 +81,7 @@ function phaseIcon(phase: string): string {
     case "Extract": return "🧬";
     case "Adapt": return "🧪";
     case "Mutate": return "💉";
+    case "Quarantine": return "🔒";
     default: return "📌";
   }
 }
@@ -90,6 +93,7 @@ interface ScoreData {
   immune: { antibodies: number; autoHealed: number };
   hologram: { lifetime: { requests: number; savings: number } };
   ecosystem: { primary: string };
+  evolution?: { totalQuarantined: number; totalLearned: number; pending: number };
 }
 
 interface LiveEvent {
@@ -174,6 +178,11 @@ export async function watchCommand() {
 
       const holoSav = score.hologram.lifetime.savings;
       lines.push(kv(m.hologram, `${score.hologram.lifetime.requests} req / ${holoSav}% saved`));
+
+      if (score.evolution) {
+        const evo = score.evolution;
+        lines.push(kv(m.evolution, `${evo.totalLearned} learned / ${evo.pending} pending`));
+      }
     }
 
     lines.push(hline(BOX.ml, BOX.mr));

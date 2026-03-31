@@ -85,6 +85,22 @@ export async function fixCommand() {
     console.log();
   }
 
+  // Extract phase: inject hologram context for AI consumers
+  const symptomsWithHologram = diagnosis.symptoms as (Symptom & { hologram?: string })[];
+  const holograms = symptomsWithHologram.filter(s => s.hologram);
+  if (holograms.length > 0) {
+    console.log("[afd fix] Hologram Context (Extract phase — token-optimized file structures):\n");
+    for (const s of holograms) {
+      console.log(`  --- ${s.fileTarget} ---`);
+      console.log(`  Here is the structural hologram of the file to help you understand`);
+      console.log(`  its interfaces without consuming too many tokens:\n`);
+      for (const line of s.hologram!.split("\n")) {
+        console.log(`    ${line}`);
+      }
+      console.log(`\n  Now, generate the JSON-Patch based on the structure above.\n`);
+    }
+  }
+
   // Back-stage: dump full JSON-Patch for AI consumers
   const allPatches = diagnosis.symptoms.flatMap(s =>
     s.patches.map(p => ({ symptomId: s.id, ...p }))

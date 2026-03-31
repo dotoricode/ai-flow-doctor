@@ -10,6 +10,8 @@ import { doctorCommand } from "./commands/doctor";
 import { watchCommand } from "./commands/watch";
 import { vaccineCommand } from "./commands/vaccine";
 import { langCommand } from "./commands/lang";
+import { evolutionCommand } from "./commands/evolution";
+import { mcpCommand } from "./commands/mcp";
 
 const program = new Command();
 
@@ -69,6 +71,16 @@ program
   .command("vaccine [subcommand] [arg]")
   .description("Vaccine registry: list, search, install, publish")
   .action(vaccineCommand);
+
+program
+  .command("evolution")
+  .description("Self-Evolution: analyze quarantined failures and generate lessons for AI agents")
+  .action(evolutionCommand);
+
+program
+  .command("mcp [subcommand]")
+  .description("MCP server management (install)")
+  .action(mcpCommand);
 
 program
   .command("lang [language]")

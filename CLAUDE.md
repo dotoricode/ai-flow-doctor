@@ -32,6 +32,16 @@ Completely overwrite the contents of the current `CLAUDE.md` with the new archit
 ## 4. Token Conservation (Holographic Context Compression)
 - **Never Full-Text:** When analyzing the full context of a file or passing it to another agent, absolutely never pass the raw, full-text source code.
 - **Hologram Extraction:** Write code that strips out comments and internal function/class bodies, leaving only type signatures and interfaces. Extract this **"Hologram" (skeleton)** to reduce token waste by over 80%.
+- **Proactive Hologram (MCP `afd_hologram`):** When you need to understand the structure of a large TypeScript/JSON file (>100 lines), do NOT read the entire file first. Instead, call the MCP tool `afd_hologram` with the file path. This returns a compressed type-signature skeleton that saves 80%+ tokens. Only read the full file if the hologram is insufficient for your task.
+
+## 4.1. Error Recovery Workflow (afd-Assisted Self-Healing)
+- **Reactive Recovery:** If, after you edit a file, the terminal shows an `[afd]` message indicating the file was restored (e.g., "Silent corruption detected", "Restored from antibody snapshot"), you MUST:
+  1. **Stop** your current edit attempt immediately.
+  2. Run `npx afd fix` in the terminal to get a full diagnosis with hologram context.
+  3. Read the diagnosis output and hologram to understand what went wrong.
+  4. Only then attempt the edit again, this time respecting the file's structure.
+- **Never fight the daemon.** If afd restores a file, it means your edit broke the file's structural integrity. Do not repeat the same edit. Analyze the hologram, understand the expected structure, and produce a valid modification.
+- **Check `afd-lessons.md`:** Before editing immune-critical files (`.claudeignore`, `.claude/hooks.json`, `CLAUDE.md`), check if `afd-lessons.md` exists in the project root. It contains past failure analyses — learn from previous mistakes before repeating them.
 
 ## 5. Documentation Structure
 - **`docs/architecture.md`** — System architecture, module map, S.E.A.M cycle, IPC strategy

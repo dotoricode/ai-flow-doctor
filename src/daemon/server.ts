@@ -1,7 +1,7 @@
 import { watch } from "chokidar";
 import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { AFD_DIR, PID_FILE, PORT_FILE, WATCH_TARGETS } from "../constants";
+import { AFD_DIR, PID_FILE, PORT_FILE, QUARANTINE_DIR, WATCH_TARGETS } from "../constants";
 import { initDb } from "../core/db";
 import { generateHologram } from "../core/hologram";
 import { diagnose } from "../core/immune";
@@ -13,6 +13,7 @@ import { discoverWatchTargets } from "../core/discovery";
 import { formatTimestamp, lineDiff } from "../core/log-utils";
 import { semanticDiff, isAstSupported } from "../core/semantic-diff";
 import { LruStringMap } from "../core/lru-map";
+import { analyzeQuarantine, listQuarantine, evolve } from "../core/evolution";
 
 // ── Suppression Safety Constants ──
 const DOUBLE_TAP_WINDOW_MS = 30_000;  // 30 seconds — balances demo speed and production safety
@@ -174,6 +175,45 @@ export function main(options: DaemonOptions = {}) {
     } catch { /* ignore unreadable files */ }
   }
 
+  /** Safe hologram generation with fallback on AST parse failure */
+  function safeHologram(filePath: string, source: string): string {
+    // Only attempt hologram for TS/JS files
+    if (!/\.[tj]sx?$/.test(filePath)) {
+      const lines = source.split("\n");
+      return lines.slice(0, 50).join("\n") + (lines.length > 50 ? "\n// … (truncated)" : "");
+    }
+    try {
+      const result = generateHologram(filePath, source);
+      persistHologramStats(result.originalLength, result.hologramLength);
+      return result.hologram;
+    } catch {
+      // AST parse failure — return first 50 lines as fallback
+      const lines = source.split("\n");
+      return lines.slice(0, 50).join("\n") + (lines.length > 50 ? "\n// … (truncated, AST parse failed)" : "");
+    }
+  }
+
+  /** Quarantine corrupted/deleted file content before restoring */
+  function quarantineFile(originalPath: string, corruptedContent: string | null): void {
+    try {
+      mkdirSync(QUARANTINE_DIR, { recursive: true });
+      const now = new Date();
+      const ts = now.getFullYear().toString()
+        + String(now.getMonth() + 1).padStart(2, "0")
+        + String(now.getDate()).padStart(2, "0")
+        + "_"
+        + String(now.getHours()).padStart(2, "0")
+        + String(now.getMinutes()).padStart(2, "0")
+        + String(now.getSeconds()).padStart(2, "0");
+      const baseName = originalPath.replace(/[\\/]/g, "_").replace(/^_+/, "");
+      const quarantinePath = resolve(QUARANTINE_DIR, `${ts}_${baseName}`);
+      writeFileSync(quarantinePath, corruptedContent ?? "DELETED", "utf-8");
+      seam("Quarantine", `Saved corrupted state → .afd/quarantine/${ts}_${baseName}`);
+    } catch (err) {
+      seam("Quarantine", `FAILED to quarantine ${originalPath}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // ── Auto-Seed Antibodies on Startup ──
   // Read existing immune-critical files and learn antibodies so they can be restored on delete
   function seedAntibodies() {
@@ -292,8 +332,9 @@ export function main(options: DaemonOptions = {}) {
       return "dormant";
     }
 
-    // FIRST TAP: record timestamp and auto-heal
+    // FIRST TAP: record timestamp, quarantine deleted state, then auto-heal
     state.firstTapTimestamps.set(filePath, now);
+    quarantineFile(filePath, null);
     autoHealFile(fullAntibody.id, fullAntibody.file_target, fullAntibody.patch_op);
     return "healed";
   }
@@ -377,6 +418,7 @@ export function main(options: DaemonOptions = {}) {
         selfWrites.add(path);
         setTimeout(() => selfWrites.delete(path), SELF_WRITE_DEBOUNCE_MS);
         seam("Mutate", `Restored ${path} from antibody snapshot`);
+        seam("Extract", `💡 Tip: Use the MCP tool 'afd_hologram' on ${path} to safely inspect the file's structure before attempting another edit.`);
         snapshotFile(path);
         watcher.add(path);
       } else if (result === "dormant") {
@@ -422,7 +464,8 @@ export function main(options: DaemonOptions = {}) {
       }
 
       // Re-seed antibody if this is an immune-critical file
-      const abId = immuneMap[path];
+      const normalizedPath = path.replace(/\\/g, "/");
+      const abId = immuneMap[normalizedPath];
       if (abId && oldContent !== undefined) {
         // ── Corruption Detection: silent content destruction ──
         if (isCorrupted(oldContent, newContent, path)) {
@@ -436,12 +479,14 @@ export function main(options: DaemonOptions = {}) {
             insertAntibody.run(abId, "auto-seed", path, JSON.stringify([{ op: "add", path: `/${path}`, value: newContent }]));
             seam("Adapt", `Corruption double-tap on ${path} — standing down, accepting new content`);
           } else {
-            // First corruption — restore from snapshot
+            // First corruption — quarantine corrupted content, then restore from snapshot
             corruptionTaps.set(path, now);
+            quarantineFile(path, newContent);
             selfWrites.add(path);
             setTimeout(() => selfWrites.delete(path), SELF_WRITE_DEBOUNCE_MS);
             writeFileSync(resolve(path), oldContent, "utf-8");
             seam("Mutate", `Silent corruption detected in ${path} (${oldContent.length} → ${newSize} bytes) — restored from snapshot`);
+            seam("Extract", `💡 Tip: Use the MCP tool 'afd_hologram' on ${path} to safely inspect the file's structure before attempting another edit.`);
           }
         } else {
           // Normal modification — update snapshot and re-seed antibody
@@ -668,7 +713,17 @@ export function main(options: DaemonOptions = {}) {
         const raw = url.searchParams.get("raw") === "true";
         const known = (antibodyIds.all() as { id: string }[]).map(r => r.id);
         const result = diagnose(known, { raw });
-        return Response.json(result);
+
+        // Enrich symptoms with hologram context for Extract phase
+        const enriched = result.symptoms.map((s: { fileTarget: string; [k: string]: unknown }) => {
+          // Try both forward-slash and backslash variants for cross-platform snapshot lookup
+          const snapshot = state.fileSnapshots.get(s.fileTarget)
+            ?? state.fileSnapshots.get(s.fileTarget.replace(/\//g, "\\"));
+          if (!snapshot) return s;
+          return { ...s, hologram: safeHologram(s.fileTarget, snapshot) };
+        });
+
+        return Response.json({ ...result, symptoms: enriched });
       }
 
       if (url.pathname === "/antibodies") {
@@ -771,6 +826,35 @@ export function main(options: DaemonOptions = {}) {
             dormantTransitions: state.dormantTransitions.length,
             activeTaps: state.firstTapTimestamps.size,
           },
+          evolution: (() => {
+            const q = listQuarantine();
+            return {
+              totalQuarantined: q.length,
+              totalLearned: q.filter(e => e.learned).length,
+              pending: q.filter(e => !e.learned).length,
+            };
+          })(),
+        });
+      }
+
+      if (url.pathname === "/evolution") {
+        const result = evolve();
+        return Response.json(result);
+      }
+
+      if (url.pathname === "/evolution/status") {
+        const q = listQuarantine();
+        const stats = analyzeQuarantine();
+        return Response.json({
+          totalQuarantined: q.length,
+          totalLearned: q.filter(e => e.learned).length,
+          pending: stats.pending,
+          lessons: stats.lessons.map(l => ({
+            file: l.entry.originalPath,
+            type: l.failureType,
+            timestamp: l.entry.timestamp,
+            suggestion: l.suggestion,
+          })),
         });
       }
 
