@@ -35,7 +35,7 @@ export interface MessageDict {
   // ── CLI messages ──
   DAEMON_ALREADY_RUNNING: string;
   DAEMON_STARTED: string;     // "{pid}" "{port}"
-  DAEMON_WATCHING: string;
+  DAEMON_WATCHING: string;    // "{count}" "{targets}"
   DAEMON_LOGS: string;        // "{path}"
   DAEMON_STOPPED: string;     // "{pid}"
   DAEMON_KILLED: string;      // "{pid}"
@@ -84,7 +84,7 @@ const en: MessageDict = {
   SCORE_VALUE_TITLE: "📈 Value Delivered",
   DAEMON_ALREADY_RUNNING: "🛡️ afd daemon is already running",
   DAEMON_STARTED: "[afd] 🛡️ Daemon started (pid={pid}, port={port})",
-  DAEMON_WATCHING: "[afd] Watching: .claude/, CLAUDE.md, .cursorrules",
+  DAEMON_WATCHING: "[afd] 🛡️ Smart Discovery: Watching {count} AI-context targets",
   DAEMON_LOGS: "[afd] Logs: {path}",
   DAEMON_STOPPED: "[afd] Daemon stopped (pid={pid})",
   DAEMON_KILLED: "[afd] Daemon killed (pid={pid})",
@@ -133,7 +133,7 @@ const ko: MessageDict = {
   SCORE_VALUE_TITLE: "📈 전달된 가치",
   DAEMON_ALREADY_RUNNING: "🛡️ afd 데몬이 이미 실행 중입니다",
   DAEMON_STARTED: "[afd] 🛡️ 데몬 시작됨 (pid={pid}, port={port})",
-  DAEMON_WATCHING: "[afd] 감시 중: .claude/, CLAUDE.md, .cursorrules",
+  DAEMON_WATCHING: "[afd] 🛡️ 스마트 탐색: AI 컨텍스트 대상 {count}개 감시 중",
   DAEMON_LOGS: "[afd] 로그: {path}",
   DAEMON_STOPPED: "[afd] 데몬 중지됨 (pid={pid})",
   DAEMON_KILLED: "[afd] 데몬 강제 종료 (pid={pid})",

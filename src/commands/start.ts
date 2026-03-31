@@ -2,11 +2,12 @@ import { resolve } from "path";
 import { spawn } from "child_process";
 import { openSync, mkdirSync } from "fs";
 import { getDaemonInfo, isDaemonAlive } from "../daemon/client";
-import { AFD_DIR, LOG_FILE } from "../constants";
+import { AFD_DIR, LOG_FILE, WATCH_TARGETS } from "../constants";
 import { detectEcosystem } from "../adapters/index";
 import { detachedSpawnOptions, IS_WINDOWS } from "../platform";
 import { getSystemLanguage } from "../core/locale";
 import { getMessages, t } from "../core/i18n/messages";
+import { discoverWatchTargets } from "../core/discovery";
 
 const STARTUP_POLL_INTERVAL_MS = 100;
 const STARTUP_POLL_MAX_MS = 3000;
@@ -51,7 +52,11 @@ export async function startCommand(options?: { mcp?: boolean }) {
 
   if (info) {
     console.log(t(msg.DAEMON_STARTED, { pid: info.pid, port: info.port }));
-    console.log(msg.DAEMON_WATCHING);
+
+    // Smart Discovery: show what we're actually watching
+    const discovery = discoverWatchTargets(WATCH_TARGETS);
+    console.log(t(msg.DAEMON_WATCHING, { count: discovery.targets.length }));
+    console.log(`[afd] Targets: ${discovery.targets.join(", ")}`);
     console.log(t(msg.DAEMON_LOGS, { path: logPath }));
 
     // Inject hooks into detected ecosystems
