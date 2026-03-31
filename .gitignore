@@ -10,3 +10,6 @@ nul/
 .claude/settings.local.json
 .mcp.json
 .bkit/
+.DS_Store
+be_resizing-demo.gif
+demo-before.gif

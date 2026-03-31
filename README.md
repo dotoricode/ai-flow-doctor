@@ -18,7 +18,7 @@
 ---
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=flat-square" alt="version" />
   <a href="https://www.npmjs.com/package/autonomous-flow-daemon"><img src="https://img.shields.io/npm/v/autonomous-flow-daemon?style=flat-square&logo=npm&color=cb0000" alt="npm" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
@@ -58,6 +58,20 @@ We built `afd` to protect your flow, not to slow it down.
 
 ---
 
+## ✨ Key Features (v1.1.0)
+
+| Feature | What it does |
+|:--------|:-------------|
+| **🛡️ S.E.A.M Auto-Heal** | Detects file deletion and restores it in < 270ms — before your AI agent notices |
+| **🔍 Smart Discovery** | Automatically scans for AI-context files (`.claude/`, `.cursorrules`, `.mcp.json`, etc.) — zero config required |
+| **🏥 Boastful Doctor** | Real-time value tracking: saved tokens, time, and cost — with witty feedback after every heal |
+| **🌐 Auto-Localization** | Seamlessly switches between Korean and English based on your system locale. Or set it: `afd lang ko` |
+| **🧬 Double-Tap Heuristic** | Distinguishes accidents from intent — delete once, afd heals it; delete again within 30s, afd respects your decision |
+| **💉 Vaccine Network** | Export learned antibodies via `afd sync` for cross-project, cross-team immunity |
+| **📊 Hologram Extraction** | Serves 80%+ lighter file skeletons to AI agents, slashing token costs |
+
+---
+
 ## The One-Command Experience
 
 > **Zero-Config. Total Protection.**
@@ -80,10 +94,10 @@ That's it. One command. `afd` takes over from here:
 
 ```
 $ afd start
-  🛡️ afd daemon started (pid 4812, port 52413)
+  🛡️ Daemon started (pid 4812, port 52413)
+  🛡️ Smart Discovery: Watching 7 AI-context targets
+  Targets: .claude/, CLAUDE.md, .cursorrules, .claudeignore, .gitignore, mcp-config.json, .mcp.json
   Hook injected into .claude/hooks.json
-  Watching: .claude/, CLAUDE.md, .cursorrules, .claudeignore, .gitignore
-  Ready.
 ```
 
 > You type `afd start`. Then you forget about it. That's the entire UX.
@@ -126,31 +140,39 @@ These files are monitored in real-time. Immune files (IMM-*) are automatically r
 | `.claudeignore` | File | IMM-001 | ✅ |
 | `.cursorrules` | File | — | Event logging only |
 | `.gitignore` | File | — | Event logging only |
+| `mcp-config.json` | File | — | 🔍 Smart Discovery |
+| `.mcp.json` | File | — | 🔍 Smart Discovery |
+| `.ai/` | Directory | — | 🔍 Smart Discovery |
+| `.windsurfrules` | File | — | 🔍 Smart Discovery |
 
 > Antibodies are **auto-seeded on startup** with each file's current content, and **refreshed on every change** — so restores always reflect the latest version.
+>
+> 🔍 **Smart Discovery** scans for 12+ known AI-config patterns at startup (< 0.1ms) and adds any found files to the active watch list automatically.
 
 ---
 
-## The Magic 5 Commands
+## Commands
 
 Everything you need. Nothing you don't.
 
 | Command | Essence | Intelligence Inside |
 |:--------|:--------|:--------------------|
-| `afd start` | **Ignite** | Daemon spawn + Hook injection |
+| `afd start` | **Ignite** | Daemon spawn + Smart Discovery + Hook injection |
 | `afd fix` | **Diagnose** | Symptom detection & Antibody learning |
-| `afd score` | **Vitals** | Health dashboard & Auto-heal stats |
+| `afd score` | **Vitals** | Localized health dashboard & Value metrics |
 | `afd sync` | **Federate** | Vaccine payload export for cross-project immunity |
-| `afd stop` | **Quarantine** | Graceful shutdown & cleanup |
+| `afd lang` | **Localize** | Switch display language (`afd lang ko` / `afd lang en`) |
+| `afd stop` | **Quarantine** | Shift summary & Graceful shutdown |
 
 ### Quick Reference
 
 ```bash
 afd start      # Start daemon, inject hooks, begin watching
 afd fix        # Scan for issues, auto-patch, learn antibodies
-afd score      # Full diagnostic dashboard
+afd score      # Full diagnostic dashboard (localized)
 afd sync       # Export antibodies to .afd/global-vaccine-payload.json
-afd stop       # Graceful shutdown
+afd lang ko    # Switch to Korean / afd lang en for English
+afd stop       # Shift summary + graceful shutdown
 ```
 
 ---
@@ -172,17 +194,19 @@ afd stop       # Graceful shutdown
 │  Antibodies   : 7                            │
 │  Level        : Fortified                    │
 │  Auto-healed  : 3 background events          │
-│  Last heal    : IMM-003 (12m ago)            │
 ├──────────────────────────────────────────────┤
-│  Suppression Safety                          │
+│  📈 Value Delivered                          │
 │  ──────────────────────────────              │
-│  Mass events skipped  : 2                    │
-│  Dormant transitions  : 0                    │
-│  Active first-taps    : 1                    │
+│  Tokens saved : ~2.9K                        │
+│  Time saved   : ~40 min                      │
+│  Cost saved   : ~$0.01                       │
 ├──────────────────────────────────────────────┤
-│  Hologram Budget : 84% token savings         │
+│  🗣️ The immune system holds. Another day,   │
+│     another heal. 💪                         │
 └──────────────────────────────────────────────┘
 ```
+
+> The dashboard is fully localized. Run `afd lang ko` and every label switches to Korean.
 
 ---
 
@@ -283,6 +307,7 @@ Once registered, Claude Code will display the live status line:
 | Watching | **Chokidar** | Cross-platform, battle-tested file watcher |
 | Patching | **RFC 6902 JSON-Patch** | Deterministic, composable file mutations |
 | CLI | **Commander.js** | Standard, zero-surprise command parsing |
+| i18n | **Built-in engine** | Zero-dependency locale switching in 0.01ms |
 
 ---
 
