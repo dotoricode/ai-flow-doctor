@@ -70,7 +70,9 @@ export function initDb(): Database {
       total_requests: number; total_original_chars: number; total_hologram_chars: number;
     } | null;
     if (old && old.total_requests > 0) {
-      db.exec(`UPDATE hologram_lifetime SET total_requests = ${old.total_requests}, total_original_chars = ${old.total_original_chars}, total_hologram_chars = ${old.total_hologram_chars} WHERE id = 1`);
+      db.prepare(
+        "UPDATE hologram_lifetime SET total_requests = ?, total_original_chars = ?, total_hologram_chars = ? WHERE id = 1"
+      ).run(old.total_requests, old.total_original_chars, old.total_hologram_chars);
       db.exec("DROP TABLE hologram_stats");
     }
   } catch {

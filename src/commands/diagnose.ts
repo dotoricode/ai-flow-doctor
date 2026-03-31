@@ -1,6 +1,6 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { dirname } from "path";
-import { daemonRequest } from "../daemon/client";
+import { daemonRequest, getDaemonInfo } from "../daemon/client";
 import type { Symptom, PatchOp, DiagnosisResult } from "../core/immune";
 import { notifyAutoHeal } from "../core/notify";
 
@@ -116,15 +116,15 @@ export async function diagnoseCommand(opts: DiagnoseOptions) {
     if (applied) {
       // Notify daemon of auto-heal event
       try {
-        await fetch(
-          `http://127.0.0.1:${getDaemonPort()}/auto-heal/record`,
-          {
+        const info = getDaemonInfo();
+        if (info) {
+          await fetch(`http://127.0.0.1:${info.port}/auto-heal/record`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: symptom.id }),
             signal: AbortSignal.timeout(1000),
-          }
-        );
+          });
+        }
       } catch {
         // Non-critical — don't block
       }
@@ -142,10 +142,4 @@ export async function diagnoseCommand(opts: DiagnoseOptions) {
     if (healed.length > 0) console.log(`[afd diagnose] Auto-healed: ${healed.join(", ")}`);
     if (skipped.length > 0) console.log(`[afd diagnose] Skipped (unknown): ${skipped.join(", ")}`);
   }
-}
-
-function getDaemonPort(): number {
-  const { readFileSync } = require("fs");
-  const { PORT_FILE } = require("../constants");
-  return parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10);
 }

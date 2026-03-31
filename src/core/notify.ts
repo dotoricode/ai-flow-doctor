@@ -26,6 +26,16 @@ export function notifyAutoHeal(patternId: string): void {
   }
 }
 
+/** Escape single quotes for PowerShell string literals */
+function escapePS(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+/** Escape double quotes and backslashes for AppleScript string literals */
+function escapeAS(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function safeSpawn(cmd: string, args: string[], opts: Record<string, unknown> = {}): void {
   try {
     const child = spawn(cmd, args, { detached: true, stdio: "ignore", ...opts });
@@ -40,8 +50,8 @@ function notifyWindows(title: string, body: string): void {
     Add-Type -AssemblyName System.Windows.Forms
     $n = New-Object System.Windows.Forms.NotifyIcon
     $n.Icon = [System.Drawing.SystemIcons]::Shield
-    $n.BalloonTipTitle = '${title}'
-    $n.BalloonTipText = '${body}'
+    $n.BalloonTipTitle = '${escapePS(title)}'
+    $n.BalloonTipText = '${escapePS(body)}'
     $n.BalloonTipIcon = 'Info'
     $n.Visible = $true
     $n.ShowBalloonTip(3000)
@@ -53,7 +63,8 @@ function notifyWindows(title: string, body: string): void {
 }
 
 function notifyMacOS(title: string, body: string): void {
-  const script = `display notification "${body}" with title "${title}"`;
+  const script = `display notification "${escapeAS(body)}" with title "${escapeAS(title)}"`;
+
   safeSpawn("osascript", ["-e", script]);
 }
 

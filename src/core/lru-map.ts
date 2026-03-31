@@ -18,7 +18,8 @@ export class LruStringMap {
     return val;
   }
 
-  set(key: string, value: string): void {
+  /** Returns false if the value was too large to store (exceeds maxBytes). */
+  set(key: string, value: string): boolean {
     // Remove old entry if exists
     const old = this.map.get(key);
     if (old !== undefined) {
@@ -27,6 +28,9 @@ export class LruStringMap {
     }
 
     const valueBytes = value.length * 2;
+
+    // Skip if single value exceeds budget
+    if (valueBytes > this.maxBytes) return false;
 
     // Evict oldest entries until we have room
     while (this.currentBytes + valueBytes > this.maxBytes && this.map.size > 0) {
@@ -37,11 +41,9 @@ export class LruStringMap {
       this.map.delete(first.value);
     }
 
-    // Skip if single value exceeds budget
-    if (valueBytes > this.maxBytes) return;
-
     this.map.set(key, value);
     this.currentBytes += valueBytes;
+    return true;
   }
 
   delete(key: string): boolean {
