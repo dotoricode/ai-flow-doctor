@@ -6,13 +6,14 @@ import { scoreCommand } from "./commands/score";
 import { fixCommand } from "./commands/fix";
 import { syncCommand } from "./commands/sync";
 import { diagnoseCommand } from "./commands/diagnose";
+import { langCommand } from "./commands/lang";
 
 const program = new Command();
 
 program
   .name("afd")
   .description("Autonomous Flow Daemon - The Immune System for AI Workflows")
-  .version("1.0.0");
+  .version("1.1.0");
 
 program
   .command("start")
@@ -46,5 +47,11 @@ program
   .option("--format <type>", "Output format: a2a or human", "human")
   .option("--auto-heal", "Auto-apply patches for known antibodies")
   .action(diagnoseCommand);
+
+program
+  .command("lang [language]")
+  .description("Show or change display language (en, ko)")
+  .option("--list", "Show all supported languages")
+  .action(langCommand);
 
 program.parse();

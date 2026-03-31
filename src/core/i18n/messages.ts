@@ -29,8 +29,45 @@ export interface MessageDict {
   SHIFT_RETIRED: string;
   BOAST_SHIFT_END: string[];
 
-  // ── Score value section ──
+  // ── Score dashboard ──
+  SCORE_TITLE: string;
+  SCORE_ECOSYSTEM: string;
+  SCORE_ALSO_FOUND: string;
+  SCORE_UPTIME: string;
+  SCORE_EVENTS: string;
+  SCORE_FILES_FOUND: string;
+  SCORE_ACTIVITY: string;
+  SCORE_HOLOGRAM_TITLE: string;
+  SCORE_HOLOGRAM_REQUESTS: string;
+  SCORE_HOLOGRAM_ORIGINAL: string;
+  SCORE_HOLOGRAM_COMPRESSED: string;
+  SCORE_HOLOGRAM_SAVED: string;
+  SCORE_HOLOGRAM_EFFICIENCY: string;
+  SCORE_HOLOGRAM_EMPTY: string;
+  SCORE_HOLOGRAM_HINT: string;
+  SCORE_IMMUNE_TITLE: string;
+  SCORE_ANTIBODIES: string;
+  SCORE_LEVEL: string;
+  SCORE_IMMUNITY: string;
+  SCORE_AUTO_HEALED_LABEL: string;
+  SCORE_AUTO_HEALED: string;       // "{count}" "{s}"
+  SCORE_LAST_HEAL: string;         // "{id}" "{ago}"
+  SCORE_WATCHED_FILES: string;
+  SCORE_NO_FILES: string;
+  SCORE_LAST_EVENT: string;
+  SCORE_AGO: string;               // "{time}"
   SCORE_VALUE_TITLE: string;
+  SCORE_IMMUNE_VULNERABLE: string;
+  SCORE_IMMUNE_LEARNING: string;
+  SCORE_IMMUNE_GUARDED: string;
+  SCORE_IMMUNE_FORTIFIED: string;
+
+  // ── Lang command ──
+  LANG_CURRENT: string;            // "{lang}"
+  LANG_CHANGED: string;            // "{lang}"
+  LANG_SAVED: string;              // "{path}"
+  LANG_LIST_TITLE: string;
+  LANG_INVALID: string;            // "{lang}" "{supported}"
 
   // ── CLI messages ──
   DAEMON_ALREADY_RUNNING: string;
@@ -81,8 +118,43 @@ const en: MessageDict = {
     "Clocking out. Remember: I never sleep, I just pause. ⏸️",
     "End of watch. Zero casualties on my side. 🏥",
   ],
-  SCORE_VALUE_TITLE: "📈 Value Delivered",
-  DAEMON_ALREADY_RUNNING: "🛡️ afd daemon is already running",
+  SCORE_TITLE: "afd score — Daemon Diagnostics",
+  SCORE_ECOSYSTEM: "Ecosystem",
+  SCORE_ALSO_FOUND: "Also found",
+  SCORE_UPTIME: "Uptime",
+  SCORE_EVENTS: "Events",
+  SCORE_FILES_FOUND: "Files Found",
+  SCORE_ACTIVITY: "Activity",
+  SCORE_HOLOGRAM_TITLE: "Context Efficiency (Hologram)",
+  SCORE_HOLOGRAM_REQUESTS: "Requests",
+  SCORE_HOLOGRAM_ORIGINAL: "Original",
+  SCORE_HOLOGRAM_COMPRESSED: "Hologram",
+  SCORE_HOLOGRAM_SAVED: "Saved",
+  SCORE_HOLOGRAM_EFFICIENCY: "Efficiency",
+  SCORE_HOLOGRAM_EMPTY: "No hologram requests yet.",
+  SCORE_HOLOGRAM_HINT: "Use: GET /hologram?file=<path>",
+  SCORE_IMMUNE_TITLE: "Immune System",
+  SCORE_ANTIBODIES: "Antibodies",
+  SCORE_LEVEL: "Level",
+  SCORE_IMMUNITY: "Immunity",
+  SCORE_AUTO_HEALED_LABEL: "Auto-healed",
+  SCORE_AUTO_HEALED: "{count} background event{s}",
+  SCORE_LAST_HEAL: "{id} ({ago} ago)",
+  SCORE_WATCHED_FILES: "Watched Files:",
+  SCORE_NO_FILES: "No files detected yet.",
+  SCORE_LAST_EVENT: "Last",
+  SCORE_AGO: "{time} ago",
+  SCORE_VALUE_TITLE: "\uD83D\uDCC8 Value Delivered",
+  SCORE_IMMUNE_VULNERABLE: "Vulnerable",
+  SCORE_IMMUNE_LEARNING: "Learning",
+  SCORE_IMMUNE_GUARDED: "Guarded",
+  SCORE_IMMUNE_FORTIFIED: "Fortified",
+  LANG_CURRENT: "[afd] Current language: {lang}",
+  LANG_CHANGED: "[afd] Language changed to: {lang}",
+  LANG_SAVED: "[afd] Saved to {path}",
+  LANG_LIST_TITLE: "[afd] Supported languages:",
+  LANG_INVALID: "[afd] Unknown language '{lang}'. Supported: {supported}",
+  DAEMON_ALREADY_RUNNING: "\uD83D\uDEE1\uFE0F afd daemon is already running",
   DAEMON_STARTED: "[afd] 🛡️ Daemon started (pid={pid}, port={port})",
   DAEMON_WATCHING: "[afd] 🛡️ Smart Discovery: Watching {count} AI-context targets",
   DAEMON_LOGS: "[afd] Logs: {path}",
@@ -94,52 +166,87 @@ const en: MessageDict = {
 };
 
 const ko: MessageDict = {
-  HEAL_LOG: "[afd] 🩹 {fileName} 복구 완료 ({ms}ms) | 📉 ~{tokens} 토큰 & {mins}분 디버깅 절약",
+  HEAL_LOG: "[afd] 🩹 {fileName} 살려냈습니다 ({ms}ms) | 📉 토큰 ~{tokens}개 & {mins}분 아꼈네요",
   BOAST_HEAL: [
-    "위험했다! {ms}ms 만에 복구. 커피 한 잔 빚졌어요 ☕",
-    "Claude가 핵심 설정을 지우려 했지만, 제가 막았습니다 🛡️",
-    "또 하나의 변이 무력화. 플로우는 영원합니다 💉",
-    "파일이 사라졌다가 눈 깜짝할 새 돌아왔습니다 👁️",
-    "수상한 삭제를 감지했어요. 당직 중이라 다행이죠 🔬",
-    "'git checkout' 치기도 전에 패치 완료. 무료입니다 🩺",
-    "보통 데몬이면 넘어갔을 텐데, 전 아니죠 🦠→🛡️",
-    "설정 복구 완료. AI 에이전트는 모를 거예요 🤫",
-    "치명적 변이를 비행 중 요격. 일상적인 수술이죠 ✂️",
-    "면역 체계 건재. 오늘도 한 건 치료 완료 💪",
+    "위험할 뻔했네요! {ms}ms 만에 복구 완료. 커피 한 잔 사세요 ☕",
+    "클로드가 핵심 설정을 지우려길래 제가 컷했습니다 🛡️",
+    "변이 한 놈 더 잡았습니다. 코딩 흐름 끊기지 않게 💉",
+    "파일이 삭제될 뻔했지만 눈 깜짝할 새 되돌려놨어요 👁️",
+    "수상한 움직임을 감지했습니다. 제가 당직이라 다행인 줄 아세요 🔬",
+    "git checkout 치기도 전에 고쳐놨습니다. 이건 서비스예요 🩺",
+    "일반 데몬이었으면 멍 때렸겠지만, 전 아니죠 🦠→🛡️",
+    "설정 복구 완료. AI 에이전트는 감쪽같이 모를 거예요 🤫",
+    "심각한 변이를 비행 중에 요격했습니다. 늘 있는 일이죠 ✂️",
+    "면역 체계 이상 무. 오늘도 한 건 해결했습니다 💪",
   ],
   BOAST_HEAL_PREFIX: "[afd] 🗣️",
   BOAST_DORMANT: [
-    "두 번이나 지웠어요? 좋아요, 의사 선생님 뜻을 존중합니다 🫡",
-    "더블탭 감지. 물러서겠습니다 — 당신의 판단을 믿어요 🤝",
-    "필요 없다는 걸 알겠어요. 항체 우아하게 은퇴합니다 😌",
+    "두 번이나 지우시겠다고요? 알겠습니다, 뜻대로 하세요 🫡",
+    "더블 클릭 감지. 이번엔 원하시는 대로 물러나 드릴게요 🤝",
+    "필요 없으시다면야... 항체 우아하게 퇴장합니다 😌",
   ],
   DORMANT_LOG: "[afd] 🫡 항체 {id} 은퇴. {boast}",
-  SHIFT_TITLE: "🏥 afd 근무 요약",
+  SHIFT_TITLE: "🏥 afd 오늘의 근무 리포트",
   SHIFT_ON_DUTY: "근무 시간",
-  SHIFT_EVENTS: "이벤트",
+  SHIFT_EVENTS: "발생 이벤트",
   SHIFT_HEALS: "치료 횟수",
-  SHIFT_TOKENS: "절약 토큰",
-  SHIFT_TIME: "절약 시간",
-  SHIFT_COST: "절약 비용",
+  SHIFT_TOKENS: "절약한 토큰",
+  SHIFT_TIME: "아낀 시간",
+  SHIFT_COST: "절감 비용",
   SHIFT_SUPPRESSED: "억제됨",
-  SHIFT_RETIRED: "은퇴됨",
+  SHIFT_RETIRED: "은퇴함",
   BOAST_SHIFT_END: [
-    "또 하루의 근무 완료. 플로우는 더 강해졌습니다 💎",
-    "퇴근합니다. 설정 파일은 안전해요... 지금은요 🌙",
-    "근무 종료. 변이 하나도 못 지나갔어요. 거의요 😏",
-    "퇴근. 전 자지 않아요, 잠시 멈출 뿐 ⏸️",
-    "당직 종료. 제 쪽 사상자 제로 🏥",
+    "오늘 근무 끝. 덕분에 프로젝트가 더 튼튼해졌네요 💎",
+    "퇴근합니다. 설정 파일들은 안전해요... 아직은요 🌙",
+    "근무 종료. 단 하나의 변이도 놓치지 않았습니다. (아마도요) 😏",
+    "퇴근할게요. 전 자는 게 아니라 잠시 멈추는 겁니다 ⏸️",
+    "당직 종료. 제 구역 사상자는 없습니다 🏥",
   ],
+  SCORE_TITLE: "afd score — 프로젝트 건강 검진",
+  SCORE_ECOSYSTEM: "에코시스템",
+  SCORE_ALSO_FOUND: "추가 감지",
+  SCORE_UPTIME: "가동 시간",
+  SCORE_EVENTS: "이벤트",
+  SCORE_FILES_FOUND: "감지된 파일",
+  SCORE_ACTIVITY: "활동량",
+  SCORE_HOLOGRAM_TITLE: "컨텍스트 효율 (Hologram)",
+  SCORE_HOLOGRAM_REQUESTS: "요청 수",
+  SCORE_HOLOGRAM_ORIGINAL: "원본 크기",
+  SCORE_HOLOGRAM_COMPRESSED: "홀로그램",
+  SCORE_HOLOGRAM_SAVED: "절약됨",
+  SCORE_HOLOGRAM_EFFICIENCY: "압축 효율",
+  SCORE_HOLOGRAM_EMPTY: "아직 홀로그램 요청이 없습니다.",
+  SCORE_HOLOGRAM_HINT: "사용법: GET /hologram?file=<경로>",
+  SCORE_IMMUNE_TITLE: "면역 시스템",
+  SCORE_ANTIBODIES: "항체 수",
+  SCORE_LEVEL: "방어 레벨",
+  SCORE_IMMUNITY: "면역력",
+  SCORE_AUTO_HEALED_LABEL: "자동 치유",
+  SCORE_AUTO_HEALED: "{count}건 백그라운드 치유됨",
+  SCORE_LAST_HEAL: "{id} ({ago} 전)",
+  SCORE_WATCHED_FILES: "감시 중인 파일:",
+  SCORE_NO_FILES: "아직 감지된 파일이 없습니다.",
+  SCORE_LAST_EVENT: "최근 기록",
+  SCORE_AGO: "{time} 전",
   SCORE_VALUE_TITLE: "📈 전달된 가치",
-  DAEMON_ALREADY_RUNNING: "🛡️ afd 데몬이 이미 실행 중입니다",
-  DAEMON_STARTED: "[afd] 🛡️ 데몬 시작됨 (pid={pid}, port={port})",
-  DAEMON_WATCHING: "[afd] 🛡️ 스마트 탐색: AI 컨텍스트 대상 {count}개 감시 중",
-  DAEMON_LOGS: "[afd] 로그: {path}",
-  DAEMON_STOPPED: "[afd] 데몬 중지됨 (pid={pid})",
-  DAEMON_KILLED: "[afd] 데몬 강제 종료 (pid={pid})",
-  DAEMON_NOT_RUNNING: "[afd] 실행 중인 데몬이 없습니다.",
-  DAEMON_NOT_RESPONDING: "[afd] 데몬이 응답하지 않습니다. 잔여 PID 파일을 정리합니다.",
-  DAEMON_START_FAILED: "[afd] 데몬 시작 실패. 로그를 확인하세요: {path}",
+  SCORE_IMMUNE_VULNERABLE: "취약",
+  SCORE_IMMUNE_LEARNING: "학습 중",
+  SCORE_IMMUNE_GUARDED: "경계 중",
+  SCORE_IMMUNE_FORTIFIED: "철통 방어",
+  LANG_CURRENT: "[afd] 현재 언어: {lang}",
+  LANG_CHANGED: "[afd] 언어가 변경되었습니다: {lang}",
+  LANG_SAVED: "[afd] 저장 완료 → {path}",
+  LANG_LIST_TITLE: "[afd] 지원하는 언어:",
+  LANG_INVALID: "[afd] '{lang}' 은(는) 알 수 없는 언어예요. 지원: {supported}",
+  DAEMON_ALREADY_RUNNING: "🛡️ afd 데몬이 이미 열심히 일하고 있습니다",
+  DAEMON_STARTED: "[afd] 🛡️ 데몬 시작 (pid={pid}, port={port})",
+  DAEMON_WATCHING: "[afd] 🛡️ 스마트 탐색 중: AI 컨텍스트 대상 {count}개 감시 시작",
+  DAEMON_LOGS: "[afd] 로그 위치: {path}",
+  DAEMON_STOPPED: "[afd] 데몬이 중지되었습니다 (pid={pid})",
+  DAEMON_KILLED: "[afd] 데몬 강제 종료 완료 (pid={pid})",
+  DAEMON_NOT_RUNNING: "[afd] 실행 중인 데몬을 찾을 수 없습니다.",
+  DAEMON_NOT_RESPONDING: "[afd] 데몬이 응답하지 않네요. 남은 PID 파일을 정리합니다.",
+  DAEMON_START_FAILED: "[afd] 데몬 시작 실패. 로그를 확인해 보세요: {path}",
 };
 
 const dictionaries: Record<SupportedLang, MessageDict> = { en, ko };
