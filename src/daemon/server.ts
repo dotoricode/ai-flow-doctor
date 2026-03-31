@@ -88,6 +88,56 @@ export function main(options: DaemonOptions = {}) {
   const findAntibodyByFile = db.prepare("SELECT id, dormant FROM antibodies WHERE file_target = ? AND dormant = 0");
   const setAntibodyDormant = db.prepare("UPDATE antibodies SET dormant = 1 WHERE id = ?");
 
+  // ── Persistent Hologram Stats (lifetime + daily) ──
+  const getLifetime = db.prepare("SELECT total_requests, total_original_chars, total_hologram_chars FROM hologram_lifetime WHERE id = 1");
+  const updateLifetime = db.prepare(
+    "UPDATE hologram_lifetime SET total_requests = ?, total_original_chars = ?, total_hologram_chars = ? WHERE id = 1"
+  );
+  const upsertDaily = db.prepare(`
+    INSERT INTO hologram_daily (date, requests, original_chars, hologram_chars)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(date) DO UPDATE SET
+      requests = requests + excluded.requests,
+      original_chars = original_chars + excluded.original_chars,
+      hologram_chars = hologram_chars + excluded.hologram_chars
+  `);
+  const getDailyAll = db.prepare("SELECT date, requests, original_chars, hologram_chars FROM hologram_daily ORDER BY date DESC LIMIT 7");
+  const purgeOldDaily = db.prepare("DELETE FROM hologram_daily WHERE date < date('now', '-7 days')");
+
+  function today(): string {
+    return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  }
+
+  // Load persisted lifetime stats into memory
+  const persistedLife = getLifetime.get() as {
+    total_requests: number;
+    total_original_chars: number;
+    total_hologram_chars: number;
+  } | null;
+  if (persistedLife) {
+    state.hologramStats.totalRequests = persistedLife.total_requests;
+    state.hologramStats.totalOriginalChars = persistedLife.total_original_chars;
+    state.hologramStats.totalHologramChars = persistedLife.total_hologram_chars;
+  }
+
+  /** Record a hologram request into both lifetime and daily stats */
+  function persistHologramStats(originalChars: number, hologramChars: number) {
+    // Update in-memory lifetime
+    state.hologramStats.totalRequests++;
+    state.hologramStats.totalOriginalChars += originalChars;
+    state.hologramStats.totalHologramChars += hologramChars;
+
+    // Persist lifetime
+    const hs = state.hologramStats;
+    updateLifetime.run(hs.totalRequests, hs.totalOriginalChars, hs.totalHologramChars);
+
+    // Upsert today's daily row
+    upsertDaily.run(today(), 1, originalChars, hologramChars);
+
+    // Periodic purge (cheap: only deletes if rows exist beyond 7 days)
+    purgeOldDaily.run();
+  }
+
   // ── S.E.A.M Cycle Logger ──
   // In MCP mode, use stderr to keep stdout clean for JSON-RPC protocol
   const log = options.mcp ? console.error.bind(console) : console.log.bind(console);
@@ -424,9 +474,7 @@ export function main(options: DaemonOptions = {}) {
             const absPath = resolve(file);
             const source = readFileSync(absPath, "utf-8");
             const result = generateHologram(file, source);
-            state.hologramStats.totalRequests++;
-            state.hologramStats.totalOriginalChars += result.originalLength;
-            state.hologramStats.totalHologramChars += result.hologramLength;
+            persistHologramStats(result.originalLength, result.hologramLength);
             mcpResponse(id, {
               content: [{ type: "text", text: result.hologram }],
             });
@@ -494,9 +542,7 @@ export function main(options: DaemonOptions = {}) {
           const absPath = resolve(file);
           const source = readFileSync(absPath, "utf-8");
           const result = generateHologram(file, source);
-          state.hologramStats.totalRequests++;
-          state.hologramStats.totalOriginalChars += result.originalLength;
-          state.hologramStats.totalHologramChars += result.hologramLength;
+          persistHologramStats(result.originalLength, result.hologramLength);
           return Response.json(result);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -559,6 +605,8 @@ export function main(options: DaemonOptions = {}) {
         const globalSavings = hs.totalOriginalChars > 0
           ? Math.round((hs.totalOriginalChars - hs.totalHologramChars) / hs.totalOriginalChars * 1000) / 10
           : 0;
+        const dailyRows = getDailyAll.all() as { date: string; requests: number; original_chars: number; hologram_chars: number }[];
+        const todayRow = dailyRows.find(r => r.date === today());
         return Response.json({
           uptime,
           filesDetected: state.filesDetected,
@@ -568,10 +616,26 @@ export function main(options: DaemonOptions = {}) {
           watchedFiles: state.watchedFiles,
           watchTargets: discovery.targets,
           hologram: {
-            requests: hs.totalRequests,
-            originalChars: hs.totalOriginalChars,
-            hologramChars: hs.totalHologramChars,
-            savings: globalSavings,
+            lifetime: {
+              requests: hs.totalRequests,
+              originalChars: hs.totalOriginalChars,
+              hologramChars: hs.totalHologramChars,
+              savings: globalSavings,
+            },
+            today: todayRow ? {
+              requests: todayRow.requests,
+              originalChars: todayRow.original_chars,
+              hologramChars: todayRow.hologram_chars,
+              savings: todayRow.original_chars > 0
+                ? Math.round((todayRow.original_chars - todayRow.hologram_chars) / todayRow.original_chars * 1000) / 10
+                : 0,
+            } : null,
+            daily: dailyRows.map(r => ({
+              date: r.date,
+              requests: r.requests,
+              originalChars: r.original_chars,
+              hologramChars: r.hologram_chars,
+            })),
           },
           immune: {
             antibodies: abCount.cnt,
