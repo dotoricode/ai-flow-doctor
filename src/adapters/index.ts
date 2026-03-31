@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
+import { resolveHookCommand } from "../platform";
 
 export interface HarnessSchema {
   configFiles: string[];
@@ -48,7 +49,7 @@ export const ClaudeCodeAdapter: EcosystemAdapter = {
   },
   injectHooks(cwd: string): { injected: boolean; message: string } {
     const hooksPath = join(cwd, ".claude", "hooks.json");
-    const hookCommand = "bun run " + join(cwd, "src", "cli.ts").replace(/\\/g, "/") + " diagnose --format a2a --auto-heal";
+    const hookCommand = resolveHookCommand();
 
     const newHook: HookEntry = {
       id: AFD_HOOK_MARKER,

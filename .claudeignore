@@ -4,3 +4,20 @@ dist/
 .afd/
 *.log
 .env
+
+# Bun & Package Lock (용량이 크고 AI가 읽을 필요 없는 해시 덩어리)
+bun.lock
+bun.lockb
+package-lock.json
+yarn.lock
+
+# SQLite DB Files (바이너리 파일이라 AI가 읽으면 에러를 뿜거나 토큰을 증발시킴)
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# OS & 기타 무시 대상
+.DS_Store
+coverage/
