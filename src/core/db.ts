@@ -1,10 +1,11 @@
 import { mkdirSync } from "fs";
 import { Database } from "bun:sqlite";
-import { AFD_DIR, DB_FILE } from "../constants";
+import { resolveWorkspacePaths } from "../constants";
 
 export function initDb(): Database {
-  mkdirSync(AFD_DIR, { recursive: true });
-  const db = new Database(DB_FILE);
+  const paths = resolveWorkspacePaths();
+  mkdirSync(paths.afdDir, { recursive: true });
+  const db = new Database(paths.dbFile);
   db.exec("PRAGMA journal_mode = WAL");
 
   db.exec(`

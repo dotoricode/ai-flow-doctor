@@ -1,6 +1,6 @@
 import { getDaemonInfo, isDaemonAlive, daemonRequest } from "../daemon/client";
 import { unlinkSync } from "fs";
-import { PID_FILE, PORT_FILE } from "../constants";
+import { resolveWorkspacePaths } from "../constants";
 import { formatShiftSummary } from "../core/boast";
 import type { ShiftSummary } from "../core/boast";
 import { getSystemLanguage } from "../core/locale";
@@ -8,8 +8,9 @@ import { getMessages, t } from "../core/i18n/messages";
 import { detectEcosystem } from "../adapters/index";
 
 function cleanupFiles() {
-  try { unlinkSync(PID_FILE); } catch {}
-  try { unlinkSync(PORT_FILE); } catch {}
+  const paths = resolveWorkspacePaths();
+  try { unlinkSync(paths.pidFile); } catch {}
+  try { unlinkSync(paths.portFile); } catch {}
 }
 
 export async function stopCommand(options?: { clean?: boolean }) {

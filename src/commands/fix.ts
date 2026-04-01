@@ -53,8 +53,9 @@ async function learnAntibody(symptom: Symptom): Promise<void> {
 
 async function getDaemonPort(): Promise<number> {
   const { readFileSync } = await import("fs");
-  const { PORT_FILE } = await import("../constants");
-  return parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10);
+  const { resolveWorkspacePaths } = await import("../constants");
+  const paths = resolveWorkspacePaths();
+  return parseInt(readFileSync(paths.portFile, "utf-8").trim(), 10);
 }
 
 export async function fixCommand() {

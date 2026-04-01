@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { spawn } from "child_process";
 import { openSync, mkdirSync } from "fs";
 import { getDaemonInfo, isDaemonAlive } from "../daemon/client";
-import { AFD_DIR, LOG_FILE, WATCH_TARGETS } from "../constants";
+import { WATCH_TARGETS, resolveWorkspacePaths } from "../constants";
 import { detectEcosystem } from "../adapters/index";
 import type { DetectionResult } from "../adapters/index";
 import { detachedSpawnOptions, IS_WINDOWS } from "../platform";
@@ -90,7 +90,8 @@ export async function startCommand(options?: { mcp?: boolean }) {
   const lang = getSystemLanguage();
   const msg = getMessages(lang);
 
-  mkdirSync(AFD_DIR, { recursive: true });
+  const paths = resolveWorkspacePaths();
+  mkdirSync(paths.afdDir, { recursive: true });
 
   // ── Idempotency: check if already running ──
   const existing = getDaemonInfo();
@@ -101,7 +102,7 @@ export async function startCommand(options?: { mcp?: boolean }) {
 
   // ── Spawn detached daemon with log redirection ──
   const daemonScript = resolve(import.meta.dirname, "../daemon/server.ts");
-  const logPath = resolve(LOG_FILE);
+  const logPath = paths.logFile;
   rotateLogIfNeeded(logPath);
   const logFd = openSync(logPath, "a"); // append mode
 

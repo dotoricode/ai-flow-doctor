@@ -1,17 +1,45 @@
-import { readFileSync, existsSync } from "fs";
-import { PID_FILE, PORT_FILE } from "../constants";
+import { readFileSync, existsSync, unlinkSync } from "fs";
+import { resolveWorkspacePaths } from "../constants";
 
 export interface DaemonInfo {
   pid: number;
   port: number;
+  workspace: string;
 }
 
+/**
+ * Read daemon PID/port from the workspace-local `.afd/` directory.
+ * Walks up from cwd to find the workspace root, so CLI commands
+ * work correctly even when invoked from subdirectories.
+ *
+ * If PID file exists but process is dead, cleans up stale files.
+ */
 export function getDaemonInfo(): DaemonInfo | null {
-  if (!existsSync(PID_FILE) || !existsSync(PORT_FILE)) return null;
-  const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
-  const port = parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10);
+  const paths = resolveWorkspacePaths();
+  if (!existsSync(paths.pidFile) || !existsSync(paths.portFile)) return null;
+
+  const pid = parseInt(readFileSync(paths.pidFile, "utf-8").trim(), 10);
+  const port = parseInt(readFileSync(paths.portFile, "utf-8").trim(), 10);
   if (isNaN(pid) || isNaN(port)) return null;
-  return { pid, port };
+
+  // Stale PID detection: check if process is alive at OS level
+  if (!isProcessAlive(pid)) {
+    try { unlinkSync(paths.pidFile); } catch {}
+    try { unlinkSync(paths.portFile); } catch {}
+    return null;
+  }
+
+  return { pid, port, workspace: paths.root };
+}
+
+/** Check if a process exists at OS level (does not verify it's afd) */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // signal 0 = existence check
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function isDaemonAlive(info: DaemonInfo): Promise<boolean> {
