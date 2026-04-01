@@ -81,6 +81,7 @@ export interface MessageDict {
   DAEMON_NOT_RUNNING: string;
   DAEMON_NOT_RESPONDING: string;
   DAEMON_START_FAILED: string; // "{path}"
+  DAEMON_RESTARTING: string;
 
   // ── Setup checklist ──
   SETUP_HEADER: string;         // "{ecosystem}"
@@ -179,6 +180,7 @@ const en: MessageDict = {
   DAEMON_NOT_RUNNING: "[afd] No daemon running.",
   DAEMON_NOT_RESPONDING: "[afd] Daemon not responding. Cleaning up stale PID files.",
   DAEMON_START_FAILED: "[afd] Failed to start daemon. Check logs: {path}",
+  DAEMON_RESTARTING: "[afd] 🔄 Restarting daemon...",
 
   SETUP_HEADER: "[afd] Setting up {ecosystem} ecosystem:",
   SETUP_HOOKS_NEW: "  [+] Hook injected into PreToolUse",
@@ -276,6 +278,7 @@ const ko: MessageDict = {
   DAEMON_NOT_RUNNING: "[afd] 실행 중인 데몬을 찾을 수 없습니다.",
   DAEMON_NOT_RESPONDING: "[afd] 데몬이 응답하지 않네요. 남은 PID 파일을 정리합니다.",
   DAEMON_START_FAILED: "[afd] 데몬 시작 실패. 로그를 확인해 보세요: {path}",
+  DAEMON_RESTARTING: "[afd] 🔄 데몬을 재시작합니다...",
 
   SETUP_HEADER: "[afd] {ecosystem} 에코시스템 설정 중:",
   SETUP_HOOKS_NEW: "  [+] PreToolUse 훅 주입 완료",

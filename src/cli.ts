@@ -2,6 +2,8 @@
 import { Command } from "commander";
 import { startCommand } from "./commands/start";
 import { stopCommand } from "./commands/stop";
+import { restartCommand } from "./commands/restart";
+import { statusCommand } from "./commands/status";
 import { scoreCommand } from "./commands/score";
 import { fixCommand } from "./commands/fix";
 import { syncCommand } from "./commands/sync";
@@ -31,6 +33,16 @@ program
   .description("Stop the afd daemon")
   .option("--clean", "Remove all injected hooks and MCP registrations")
   .action(stopCommand);
+
+program
+  .command("restart")
+  .description("Restart the afd daemon (stop + start)")
+  .action(restartCommand);
+
+program
+  .command("status")
+  .description("Quick health check — daemon, hooks, defenses, quarantine")
+  .action(statusCommand);
 
 program
   .command("score")
