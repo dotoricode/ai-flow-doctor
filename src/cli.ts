@@ -9,12 +9,14 @@ import { fixCommand } from "./commands/fix";
 import { syncCommand } from "./commands/sync";
 import { diagnoseCommand } from "./commands/diagnose";
 import { doctorCommand } from "./commands/doctor";
-import { watchCommand } from "./commands/watch";
+
 import { vaccineCommand } from "./commands/vaccine";
 import { langCommand } from "./commands/lang";
 import { evolutionCommand } from "./commands/evolution";
 import { mcpCommand } from "./commands/mcp";
+import { statsCommand } from "./commands/stats";
 import { APP_VERSION } from "./version";
+import { trackCliCommand } from "./core/telemetry";
 
 const program = new Command();
 
@@ -22,6 +24,10 @@ program
   .name("afd")
   .description("Autonomous Flow Daemon - The Immune System for AI Workflows")
   .version(APP_VERSION);
+
+program.hook("preAction", (thisCommand) => {
+  trackCliCommand(thisCommand.name());
+});
 
 program
   .command("start")
@@ -70,11 +76,6 @@ program
   .action(doctorCommand);
 
 program
-  .command("watch")
-  .description("Real-time TUI dashboard — live S.E.A.M event stream")
-  .action(watchCommand);
-
-program
   .command("diagnose")
   .description("Run headless diagnosis (used by auto-heal hooks)")
   .option("--format <type>", "Output format: a2a or human", "human")
@@ -101,5 +102,11 @@ program
   .description("Show or change display language (en, ko)")
   .option("--list", "Show all supported languages")
   .action(langCommand);
+
+program
+  .command("stats")
+  .description("Feature usage telemetry dashboard (developer-only)")
+  .option("--days <n>", "Number of days to aggregate", "7")
+  .action(statsCommand);
 
 program.parse();

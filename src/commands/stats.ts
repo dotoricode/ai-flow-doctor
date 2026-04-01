@@ -92,7 +92,7 @@ export async function statsCommand(opts: { days?: string }) {
   }
 
   // Dead features warning
-  const allCli = ["start", "stop", "restart", "status", "score", "fix", "sync", "doctor", "watch", "diagnose", "vaccine", "evolution", "mcp", "lang", "stats"];
+  const allCli = ["start", "stop", "restart", "status", "score", "fix", "sync", "doctor", "diagnose", "vaccine", "evolution", "mcp", "lang", "stats"];
   const unusedCli = allCli.filter(cmd => !(cmd in data.cli));
   if (unusedCli.length > 0 && Object.keys(data.cli).length > 0) {
     out.push(renderSection("Unused CLI Commands"));
