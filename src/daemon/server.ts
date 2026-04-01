@@ -1,7 +1,7 @@
 import { watch } from "chokidar";
-import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
-import { resolve } from "path";
-import { AFD_DIR, PID_FILE, PORT_FILE, QUARANTINE_DIR, WATCH_TARGETS } from "../constants";
+import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync, watch as fsWatch, readdirSync } from "fs";
+import { resolve, join } from "path";
+import { QUARANTINE_DIR, WATCH_TARGETS, resolveWorkspacePaths } from "../constants";
 import { initDb } from "../core/db";
 import { generateHologram } from "../core/hologram";
 import { diagnose } from "../core/immune";
@@ -22,6 +22,11 @@ const MASS_EVENT_WINDOW_MS = 1_000;   // 1 second window
 const TAP_CLEANUP_INTERVAL_MS = 60_000; // Purge stale first-tap entries every 60s
 const SELF_WRITE_DEBOUNCE_MS = 100;   // Debounce window for self-write fs.watch duplicates
 const MAX_SSE_CLIENTS = 20;             // Prevent DoS via excessive SSE connections
+const VALIDATOR_TIMEOUT_MS = 500;       // Max execution time per custom validator
+const VALIDATORS_DIR = ".afd/validators"; // Dynamic validator scripts directory
+
+/** Custom validator function signature: returns true if content is considered corrupted */
+type ValidatorFn = (newContent: string, filePath: string) => boolean;
 
 interface HologramStats {
   totalRequests: number;
@@ -50,6 +55,8 @@ interface DaemonState {
   fileSnapshots: LruStringMap;
   /** SSE subscribers for live event streaming */
   sseClients: Set<ReadableStreamDefaultController<Uint8Array>>;
+  /** Dynamically loaded custom validators from .afd/validators/ */
+  customValidators: Map<string, ValidatorFn>;
 }
 
 const state: DaemonState = {
@@ -69,17 +76,22 @@ const state: DaemonState = {
   totalFileBytesSaved: 0,
   fileSnapshots: new LruStringMap(10 * 1024 * 1024), // 10 MB cap
   sseClients: new Set(),
+  customValidators: new Map(),
 };
 
+// Workspace-resolved paths (set once at startup)
+const _ws = resolveWorkspacePaths();
+
 // Resources to clean up on exit (populated inside main())
-let _cleanupResources: { watcher?: ReturnType<typeof watch>; interval?: ReturnType<typeof setInterval>; db?: { close(): void } } = {};
+let _cleanupResources: { watcher?: ReturnType<typeof watch>; interval?: ReturnType<typeof setInterval>; validatorWatcher?: ReturnType<typeof fsWatch>; db?: { close(): void } } = {};
 
 function cleanup() {
   try { _cleanupResources.interval && clearInterval(_cleanupResources.interval); } catch {}
   try { _cleanupResources.watcher?.close(); } catch {}
+  try { _cleanupResources.validatorWatcher?.close(); } catch {}
   try { _cleanupResources.db?.close(); } catch {}
-  try { unlinkSync(PID_FILE); } catch {}
-  try { unlinkSync(PORT_FILE); } catch {}
+  try { unlinkSync(_ws.pidFile); } catch {}
+  try { unlinkSync(_ws.portFile); } catch {}
 }
 
 interface DaemonOptions {
@@ -251,6 +263,82 @@ export function main(options: DaemonOptions = {}) {
 
   seedAntibodies();
 
+  // ── Dynamic Immune Synthesis: hot-reload custom validators from .afd/validators/ ──
+  const validatorsDir = join(process.cwd(), VALIDATORS_DIR);
+
+  async function loadValidators() {
+    state.customValidators.clear();
+    if (!existsSync(validatorsDir)) return;
+
+    let files: string[];
+    try {
+      files = readdirSync(validatorsDir).filter(f => f.endsWith(".js"));
+    } catch { return; }
+
+    for (const file of files) {
+      const absPath = resolve(validatorsDir, file);
+      try {
+        // Cache-bust: append timestamp query to bypass ES module cache
+        const mod = await import(`${absPath}?t=${Date.now()}`);
+        const fn = mod.default ?? mod;
+        if (typeof fn === "function") {
+          state.customValidators.set(file, fn as ValidatorFn);
+          seam("Adapt", `🧬 Validator loaded: ${file}`);
+        } else {
+          seam("Adapt", `⚠️ Validator ${file} does not export a function — skipped`);
+        }
+      } catch (err) {
+        seam("Adapt", `⚠️ Failed to load validator ${file}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (state.customValidators.size > 0) {
+      seam("Adapt", `Dynamic Immune Synthesis: ${state.customValidators.size} active validator(s)`);
+    }
+  }
+
+  // Initial load
+  loadValidators();
+
+  // Watch for changes in .afd/validators/
+  try {
+    mkdirSync(validatorsDir, { recursive: true });
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    const validatorWatcher = fsWatch(validatorsDir, (_eventType, filename) => {
+      if (!filename?.endsWith(".js")) return;
+      // Debounce rapid changes (editor save + format)
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        seam("Sense", `Validator change detected: ${filename} — reloading...`);
+        loadValidators();
+        reloadTimer = null;
+      }, 200);
+    });
+    _cleanupResources.validatorWatcher = validatorWatcher;
+  } catch (err) {
+    seam("Adapt", `⚠️ Cannot watch ${VALIDATORS_DIR}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  /** Run all custom validators with sandbox (try-catch + timeout concept) */
+  function runCustomValidators(newContent: string, filePath: string): boolean {
+    for (const [name, fn] of state.customValidators) {
+      try {
+        const t0 = performance.now();
+        const result = fn(newContent, filePath);
+        const elapsed = performance.now() - t0;
+        if (elapsed > VALIDATOR_TIMEOUT_MS) {
+          seam("Adapt", `⚠️ Validator ${name} took ${Math.round(elapsed)}ms (>${VALIDATOR_TIMEOUT_MS}ms) — consider optimizing`);
+        }
+        if (result === true) {
+          seam("Adapt", `🛡️ Custom validator ${name} flagged corruption in ${filePath}`);
+          return true;
+        }
+      } catch (err) {
+        seam("Adapt", `⚠️ Validator ${name} threw error — ignored: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return false;
+  }
+
   // ── Periodic cleanup: purge stale entries to prevent memory leaks ──
   const tapCleanupInterval = setInterval(() => {
     const now = Date.now();
@@ -393,11 +481,14 @@ export function main(options: DaemonOptions = {}) {
   /** Check if a path is inside .afd/ (internal state — skip watcher reactions) */
   function isInternalPath(p: string): boolean {
     const normalized = p.replace(/\\/g, "/");
-    return normalized.startsWith(".afd/") || normalized.startsWith(AFD_DIR.replace(/\\/g, "/"));
+    return normalized.startsWith(".afd/") || normalized.includes("/.afd/");
   }
 
   /** Detect silent corruption: file exists but content is effectively destroyed */
   function isCorrupted(oldContent: string, newContent: string, filePath: string): boolean {
+    // Dynamic Immune Synthesis: run custom validators first
+    if (runCustomValidators(newContent, filePath)) return true;
+
     const trimmed = newContent.trim();
     // Empty or whitespace-only
     if (trimmed.length === 0) return true;
@@ -600,8 +691,21 @@ export function main(options: DaemonOptions = {}) {
           const raw = args.raw === true;
           const known = (antibodyIds.all() as { id: string }[]).map(r => r.id);
           const result = diagnose(known, { raw });
+
+          const PROACTIVE_THRESHOLD = 5 * 1024;
+          const enriched = result.symptoms.map((s: { fileTarget: string; [k: string]: unknown }) => {
+            const snapshot = state.fileSnapshots.get(s.fileTarget)
+              ?? state.fileSnapshots.get(s.fileTarget.replace(/\//g, "\\"));
+            if (!snapshot) return s;
+            if (snapshot.length > PROACTIVE_THRESHOLD) {
+              const hologram = safeHologram(s.fileTarget, snapshot);
+              return { ...s, hologram, contextNote: `File is ${(snapshot.length / 1024).toFixed(1)}KB — hologram provided to save tokens.` };
+            }
+            return { ...s, context: snapshot };
+          });
+
           mcpResponse(id, {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text", text: JSON.stringify({ ...result, symptoms: enriched }, null, 2) }],
           });
           return;
         }
@@ -702,7 +806,7 @@ export function main(options: DaemonOptions = {}) {
       const url = new URL(req.url);
 
       if (url.pathname === "/health") {
-        return Response.json({ status: "alive", pid: process.pid });
+        return Response.json({ status: "alive", pid: process.pid, workspace: _ws.root, port });
       }
 
       if (url.pathname === "/mini-status") {
@@ -736,13 +840,26 @@ export function main(options: DaemonOptions = {}) {
         const known = (antibodyIds.all() as { id: string }[]).map(r => r.id);
         const result = diagnose(known, { raw });
 
-        // Enrich symptoms with hologram context for Extract phase
+        const PROACTIVE_HOLOGRAM_THRESHOLD = 5 * 1024; // 5KB
+
+        // Enrich symptoms with proactive hologram context
         const enriched = result.symptoms.map((s: { fileTarget: string; [k: string]: unknown }) => {
-          // Try both forward-slash and backslash variants for cross-platform snapshot lookup
           const snapshot = state.fileSnapshots.get(s.fileTarget)
             ?? state.fileSnapshots.get(s.fileTarget.replace(/\//g, "\\"));
           if (!snapshot) return s;
-          return { ...s, hologram: safeHologram(s.fileTarget, snapshot) };
+
+          // Proactive hologram: large files get auto-compressed
+          if (snapshot.length > PROACTIVE_HOLOGRAM_THRESHOLD) {
+            const hologram = safeHologram(s.fileTarget, snapshot);
+            return {
+              ...s,
+              hologram,
+              contextNote: `File is ${(snapshot.length / 1024).toFixed(1)}KB — hologram skeleton provided to save tokens (${Math.round((1 - hologram.length / snapshot.length) * 100)}% reduction).`,
+            };
+          }
+
+          // Small files: return full content as-is
+          return { ...s, context: snapshot };
         });
 
         return Response.json({ ...result, symptoms: enriched });
@@ -856,6 +973,10 @@ export function main(options: DaemonOptions = {}) {
               pending: q.filter(e => !e.learned).length,
             };
           })(),
+          dynamicImmune: {
+            activeValidators: state.customValidators.size,
+            validatorNames: [...state.customValidators.keys()],
+          },
         });
       }
 
@@ -914,7 +1035,7 @@ export function main(options: DaemonOptions = {}) {
           antibodies: sanitized,
         };
         // Write payload to disk
-        const payloadPath = resolve(AFD_DIR, "global-vaccine-payload.json");
+        const payloadPath = resolve(_ws.afdDir, "global-vaccine-payload.json");
         writeFileSync(payloadPath, JSON.stringify(payload, null, 2), "utf-8");
         return Response.json({ status: "exported", path: payloadPath, count: sanitized.length });
       }
@@ -922,6 +1043,8 @@ export function main(options: DaemonOptions = {}) {
       if (url.pathname === "/shift-summary") {
         const uptime = Math.floor((Date.now() - state.startedAt) / 1000);
         const eventCount = db.query("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
+        const hs = state.hologramStats;
+        const hologramSavedChars = Math.max(0, hs.totalOriginalChars - hs.totalHologramChars);
         const summary = buildShiftSummary({
           uptimeSeconds: uptime,
           totalEvents: eventCount.cnt,
@@ -929,6 +1052,7 @@ export function main(options: DaemonOptions = {}) {
           totalFileBytesSaved: state.totalFileBytesSaved,
           suppressionsSkipped: state.suppressionSkippedCount,
           dormantTransitions: state.dormantTransitions.length,
+          hologramSavedChars,
         });
         return Response.json(summary);
       }
@@ -968,11 +1092,11 @@ export function main(options: DaemonOptions = {}) {
 
   const port = server.port;
 
-  mkdirSync(AFD_DIR, { recursive: true });
-  writeFileSync(PID_FILE, String(process.pid));
-  writeFileSync(PORT_FILE, String(port));
+  mkdirSync(_ws.afdDir, { recursive: true });
+  writeFileSync(_ws.pidFile, String(process.pid));
+  writeFileSync(_ws.portFile, String(port));
 
-  console.log(`[afd daemon] pid=${process.pid} port=${port}`);
+  console.log(`[afd daemon] pid=${process.pid} port=${port} workspace=${_ws.root}`);
 
   process.on("uncaughtException", (err) => {
     console.error("[afd daemon] FATAL:", err.message);

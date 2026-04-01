@@ -43,6 +43,22 @@ Completely overwrite the contents of the current `CLAUDE.md` with the new archit
 - **Never fight the daemon.** If afd restores a file, it means your edit broke the file's structural integrity. Do not repeat the same edit. Analyze the hologram, understand the expected structure, and produce a valid modification.
 - **Check `afd-lessons.md`:** Before editing immune-critical files (`.claudeignore`, `.claude/hooks.json`, `CLAUDE.md`), check if `afd-lessons.md` exists in the project root. It contains past failure analyses — learn from previous mistakes before repeating them.
 
+## 4.2. Dynamic Immune Synthesis (Self-Programming AI)
+- **Mandatory Self-Vaccination:** If you are repeatedly making the same structural mistake (e.g., syntax errors, missing imports, invalid JSON) and the daemon restores your changes, you MUST NOT simply promise to "be more careful." Instead, you MUST create an executable validator script in the current project's `.afd/validators/` directory.
+- **Validator Script Format:** Files must be `.js` and export a single function:
+  ```js
+  module.exports = function(newContent, filePath) {
+    // Return true if the content is CORRUPTED (should be blocked)
+    // Return false if the content is VALID
+    // Example: detect accidental removal of all import statements
+    if (filePath.endsWith('.ts') && !newContent.includes('import')) return true;
+    return false;
+  };
+  ```
+- **Naming Convention:** Name the file descriptively after the mistake pattern, e.g., `no-empty-exports.js`, `json-must-have-keys.js`, `prevent-duplicate-functions.js`.
+- **Automatic Absorption:** The local afd daemon hot-reloads validators instantly. Your next mistake will be caught before it corrupts the file.
+- **Safety Guarantee:** Validators run in a sandbox with error handling. A buggy validator will be ignored (not crash the daemon). Keep validators simple — regex or basic string checks, not full AST parsing.
+
 ## 5. Documentation Structure
 - **`docs/INDEX.md`** — AI entry point. Read this first to navigate all documentation.
 - **`docs/spec/`** — System specification (architecture, CLI, MCP protocol). Updated in-place.
