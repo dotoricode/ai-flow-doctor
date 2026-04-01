@@ -9,6 +9,7 @@ import { generateHologram } from "../core/hologram";
 import { diagnose } from "../core/immune";
 import type { DaemonContext } from "./types";
 import { APP_VERSION } from "../version";
+import { assertInsideWorkspace as _assertWs } from "./guards";
 
 const MCP_MAX_BUFFER = 1024 * 1024; // 1 MB
 
@@ -62,13 +63,6 @@ function mcpError(id: unknown, code: number, message: string) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }) + "\n");
 }
 
-/** Guard: reject resolved paths outside the workspace root */
-function assertInsideWorkspace(absPath: string): void {
-  const cwd = process.cwd();
-  if (!absPath.startsWith(cwd + "/") && absPath !== cwd) {
-    throw new Error("Access denied: path outside workspace");
-  }
-}
 
 function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: string; params?: Record<string, unknown> }) {
   const { id, method, params } = req;
@@ -170,7 +164,7 @@ function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: stri
       if (!file) { mcpError(id, -32602, "Missing required argument: file"); return; }
       try {
         const absPath = resolve(file);
-        assertInsideWorkspace(absPath);
+        _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
         const result = generateHologram(file, source);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
@@ -189,7 +183,7 @@ function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: stri
       try {
         const AFD_READ_THRESHOLD = 10 * 1024;
         const absPath = resolve(file);
-        assertInsideWorkspace(absPath);
+        _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
         const sizeKB = (source.length / 1024).toFixed(1);
         const rawStart = args.startLine;

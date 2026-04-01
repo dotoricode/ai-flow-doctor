@@ -11,14 +11,7 @@ import { buildShiftSummary } from "../core/boast";
 import { analyzeQuarantine, listQuarantine, evolve } from "../core/evolution";
 import { MAX_SSE_CLIENTS } from "./types";
 import type { DaemonContext } from "./types";
-
-/** Guard: reject resolved paths outside the workspace root */
-function assertInsideWorkspace(absPath: string): void {
-  const cwd = process.cwd();
-  if (!absPath.startsWith(cwd + "/") && absPath !== cwd) {
-    throw new Error("Access denied: path outside workspace");
-  }
-}
+import { assertInsideWorkspace as _assertWs } from "./guards";
 
 /** Create the HTTP fetch handler for Bun.serve */
 export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
@@ -41,7 +34,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       if (!file) return Response.json({ error: "?file= required" }, { status: 400 });
       try {
         const absPath = resolve(file);
-        assertInsideWorkspace(absPath);
+        _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
         const result = generateHologram(file, source);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
@@ -61,7 +54,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       try {
         const AFD_READ_THRESHOLD = 10 * 1024;
         const absPath = resolve(file);
-        assertInsideWorkspace(absPath);
+        _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
         const rawStart = parseInt(url.searchParams.get("startLine") ?? "", 10);
         const rawEnd = parseInt(url.searchParams.get("endLine") ?? "", 10);
@@ -197,14 +190,15 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
 
     if (url.pathname === "/sync") {
       const rows = ctx.listAntibodies.all() as { id: string; pattern_type: string; file_target: string; patch_op: string; created_at: string }[];
-      const sanitized = rows.map(r => {
-        const patches = JSON.parse(r.patch_op) as PatchOp[];
+      const sanitized = rows.flatMap(r => {
+        let patches: PatchOp[];
+        try { patches = JSON.parse(r.patch_op) as PatchOp[]; } catch { return []; }
         const cleanPatches = patches.map(p => ({
           ...p,
           path: p.path.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"),
           value: p.value?.replace(/[A-Za-z]:\\[^\s"']*/g, "<redacted>"),
         }));
-        return { id: r.id, patternType: r.pattern_type, fileTarget: r.file_target.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"), patches: cleanPatches, learnedAt: r.created_at };
+        return [{ id: r.id, patternType: r.pattern_type, fileTarget: r.file_target.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"), patches: cleanPatches, learnedAt: r.created_at }];
       });
       const payload = {
         version: "0.1.0", generatedAt: new Date().toISOString(),

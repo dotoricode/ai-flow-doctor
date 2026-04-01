@@ -57,14 +57,14 @@ const _ws = resolveWorkspacePaths();
 let _cleanupResources: {
   watcher?: ReturnType<typeof watch>;
   interval?: ReturnType<typeof setInterval>;
-  mapTimer?: ReturnType<typeof setTimeout>;
+  wsMapGetTimer?: () => ReturnType<typeof setTimeout> | null;
   validatorWatcher?: ReturnType<typeof fsWatch>;
   db?: { close(): void };
 } = {};
 
 function cleanup() {
   try { _cleanupResources.interval && clearInterval(_cleanupResources.interval); } catch {}
-  try { _cleanupResources.mapTimer && clearTimeout(_cleanupResources.mapTimer); } catch {}
+  try { const mt = _cleanupResources.wsMapGetTimer?.(); mt && clearTimeout(mt); } catch {}
   try { _cleanupResources.watcher?.close(); } catch {}
   try { _cleanupResources.validatorWatcher?.close(); } catch {}
   try { _cleanupResources.db?.close(); } catch {}
@@ -459,6 +459,7 @@ export function main(options: DaemonOptions = {}) {
 
   // ── Workspace Map ──
   const wsMap = createWorkspaceMap();
+  _cleanupResources.wsMapGetTimer = wsMap.getTimer;
   watcher.on("add", () => wsMap.markDirty());
   watcher.on("unlink", () => wsMap.markDirty());
   wsMap.get(); // initial build

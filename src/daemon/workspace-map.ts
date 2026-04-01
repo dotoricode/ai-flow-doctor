@@ -3,7 +3,7 @@
  * Provides afd://workspace-map MCP resource.
  */
 
-import { readdirSync, readFileSync, statSync, lstatSync } from "fs";
+import { readdirSync, readFileSync, lstatSync } from "fs";
 import { join } from "path";
 
 const MAX_WALK_DEPTH = 8;
@@ -55,7 +55,7 @@ function buildWorkspaceMap(): string {
   lines.push("", "# Root files");
   for (const f of ["CLAUDE.md", "package.json", ".claudeignore", ".mcp.json"]) {
     try {
-      const st = statSync(join(cwd, f));
+      const st = lstatSync(join(cwd, f));
       lines.push(`  ${f}  (${(st.size / 1024).toFixed(1)}KB)`);
     } catch { /* not found */ }
   }
