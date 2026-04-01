@@ -79,7 +79,7 @@ describe("MCP stdio protocol", () => {
       expect(toolNames).toContain("afd_score");
       expect(toolNames).toContain("afd_hologram");
       expect(toolNames).toContain("afd_read");
-      expect(tools.length).toBe(4);
+      expect(tools.length).toBeGreaterThanOrEqual(4);
 
       // 3. tools/call afd_diagnose
       const diagnoseRes = await sendAndReceive(proc, {

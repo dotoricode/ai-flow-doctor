@@ -271,7 +271,7 @@ export async function watchCommand() {
     leftLines.push(` ${C.bold}${lang === "ko" ? "💰 토큰 절감 비교" : "💰 Token Savings"}${C.reset}`);
     const origChars = score?.hologram.lifetime.originalChars ?? 0;
     const holoChars = score?.hologram.lifetime.hologramChars ?? 0;
-    const savedChars = origChars - holoChars;
+    const savedChars = Math.max(0, origChars - holoChars);
     const holoReqs = score?.hologram.lifetime.requests ?? 0;
 
     if (holoReqs > 0) {

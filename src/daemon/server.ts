@@ -1,5 +1,5 @@
 import { watch } from "chokidar";
-import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync, watch as fsWatch, readdirSync, statSync } from "fs";
+import { mkdirSync, writeFileSync, unlinkSync, readFileSync, existsSync, watch as fsWatch, readdirSync, statSync, lstatSync } from "fs";
 import { resolve, join } from "path";
 import { QUARANTINE_DIR, WATCH_TARGETS, resolveWorkspacePaths } from "../constants";
 import { initDb } from "../core/db";
@@ -82,11 +82,20 @@ const state: DaemonState = {
 // Workspace-resolved paths (set once at startup)
 const _ws = resolveWorkspacePaths();
 
+/** Guard: reject resolved paths outside the workspace root */
+function assertInsideWorkspace(absPath: string): void {
+  const cwd = process.cwd();
+  if (!absPath.startsWith(cwd + "/") && absPath !== cwd) {
+    throw new Error(`Access denied: path outside workspace`);
+  }
+}
+
 // Resources to clean up on exit (populated inside main())
-let _cleanupResources: { watcher?: ReturnType<typeof watch>; interval?: ReturnType<typeof setInterval>; validatorWatcher?: ReturnType<typeof fsWatch>; db?: { close(): void } } = {};
+let _cleanupResources: { watcher?: ReturnType<typeof watch>; interval?: ReturnType<typeof setInterval>; mapTimer?: ReturnType<typeof setTimeout>; validatorWatcher?: ReturnType<typeof fsWatch>; db?: { close(): void } } = {};
 
 function cleanup() {
   try { _cleanupResources.interval && clearInterval(_cleanupResources.interval); } catch {}
+  try { _cleanupResources.mapTimer && clearTimeout(_cleanupResources.mapTimer); } catch {}
   try { _cleanupResources.watcher?.close(); } catch {}
   try { _cleanupResources.validatorWatcher?.close(); } catch {}
   try { _cleanupResources.db?.close(); } catch {}
@@ -383,6 +392,7 @@ export function main(options: DaemonOptions = {}) {
       for (const patch of patches) {
         if (patch.op === "add" && patch.value) {
           const targetPath = resolve(patch.path.replace(/^\//, ""));
+          assertInsideWorkspace(targetPath);
           writeFileSync(targetPath, patch.value, "utf-8");
           bytesWritten += patch.value.length;
         }
@@ -625,21 +635,25 @@ export function main(options: DaemonOptions = {}) {
   let mapRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Build a workspace map: file tree with sizes and export signatures */
+  const MAX_WALK_DEPTH = 8;
   function buildWorkspaceMap(): string {
     const cwd = process.cwd();
     const lines: string[] = [`# Workspace Map — ${cwd}`, `# Generated: ${new Date().toISOString()}`, ""];
 
-    function walk(dir: string, prefix: string) {
+    function walk(dir: string, prefix: string, depth: number) {
+      if (depth > MAX_WALK_DEPTH) return;
       let entries: string[];
       try { entries = readdirSync(dir).sort(); } catch { return; }
       for (const entry of entries) {
         if (entry === "node_modules" || entry === ".afd" || entry === ".git" || entry === "dist" || entry === "coverage") continue;
         const fullPath = join(dir, entry);
         try {
-          const st = statSync(fullPath);
+          const lst = lstatSync(fullPath);
+          if (lst.isSymbolicLink()) continue; // Skip symlinks to prevent cycles
+          const st = lst;
           if (st.isDirectory()) {
             lines.push(`${prefix}${entry}/`);
-            walk(fullPath, prefix + "  ");
+            walk(fullPath, prefix + "  ", depth + 1);
             continue;
           }
           if (!entry.endsWith(".ts") && !entry.endsWith(".js") && !entry.endsWith(".json") && !entry.endsWith(".md")) continue;
@@ -662,7 +676,7 @@ export function main(options: DaemonOptions = {}) {
       }
     }
 
-    walk(join(cwd, "src"), "  ");
+    walk(join(cwd, "src"), "  ", 0);
 
     // Also list root config files
     lines.push("", "# Root files");
@@ -689,6 +703,7 @@ export function main(options: DaemonOptions = {}) {
     workspaceMapDirty = true;
     if (mapRefreshTimer) clearTimeout(mapRefreshTimer);
     mapRefreshTimer = setTimeout(() => { getWorkspaceMap(); }, 5000);
+    _cleanupResources.mapTimer = mapRefreshTimer;
   }
 
   // Hook into watcher events to invalidate map cache
@@ -866,6 +881,7 @@ export function main(options: DaemonOptions = {}) {
           }
           try {
             const absPath = resolve(file);
+            assertInsideWorkspace(absPath);
             const source = readFileSync(absPath, "utf-8");
             const result = generateHologram(file, source);
             persistHologramStats(result.originalLength, result.hologramLength);
@@ -888,10 +904,13 @@ export function main(options: DaemonOptions = {}) {
           try {
             const AFD_READ_THRESHOLD = 10 * 1024; // 10KB
             const absPath = resolve(file);
+            assertInsideWorkspace(absPath);
             const source = readFileSync(absPath, "utf-8");
             const sizeKB = (source.length / 1024).toFixed(1);
-            const startLine = args.startLine as number | undefined;
-            const endLine = args.endLine as number | undefined;
+            const rawStart = args.startLine;
+            const rawEnd = args.endLine;
+            const startLine = typeof rawStart === "number" && Number.isFinite(rawStart) ? rawStart : undefined;
+            const endLine = typeof rawEnd === "number" && Number.isFinite(rawEnd) ? rawEnd : undefined;
 
             // Line range request — always return verbatim slice
             if (startLine !== undefined && endLine !== undefined) {
@@ -1003,6 +1022,7 @@ export function main(options: DaemonOptions = {}) {
         if (!file) return Response.json({ error: "?file= required" }, { status: 400 });
         try {
           const absPath = resolve(file);
+          assertInsideWorkspace(absPath);
           const source = readFileSync(absPath, "utf-8");
           const result = generateHologram(file, source);
           persistHologramStats(result.originalLength, result.hologramLength);
@@ -1023,14 +1043,15 @@ export function main(options: DaemonOptions = {}) {
         try {
           const AFD_READ_THRESHOLD = 10 * 1024;
           const absPath = resolve(file);
+          assertInsideWorkspace(absPath);
           const source = readFileSync(absPath, "utf-8");
-          const startLine = url.searchParams.get("startLine");
-          const endLine = url.searchParams.get("endLine");
+          const rawStart = parseInt(url.searchParams.get("startLine") ?? "", 10);
+          const rawEnd = parseInt(url.searchParams.get("endLine") ?? "", 10);
 
-          if (startLine && endLine) {
+          if (Number.isFinite(rawStart) && Number.isFinite(rawEnd)) {
             const lines = source.split("\n");
-            const s = Math.max(1, parseInt(startLine, 10)) - 1;
-            const e = Math.min(lines.length, parseInt(endLine, 10));
+            const s = Math.max(1, rawStart) - 1;
+            const e = Math.min(lines.length, rawEnd);
             return Response.json({ file, lines: lines.slice(s, e), range: [s + 1, e], totalLines: lines.length });
           }
           if (source.length < AFD_READ_THRESHOLD) {
