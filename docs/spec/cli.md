@@ -30,6 +30,10 @@ Start the background daemon and auto-provision all ecosystem integrations (One-C
 4. Configures StatusLine integration
 5. Prints checklist of what was set up
 
+### `afd restart`
+
+Restart the daemon (sequential stop + start). Useful after config changes or validator updates.
+
 ### `afd stop`
 
 Stop the running daemon. Prints shift summary (heals, tokens saved, uptime).
@@ -118,3 +122,6 @@ Show or change display language (`en`, `ko`).
 | `.afd/global-vaccine-payload.json` | Exported vaccine payload |
 | `.mcp.json` | MCP server registration (auto-managed) |
 | `.claude/hooks.json` | PreToolUse hook (auto-managed) |
+| `.afd/validators/` | Custom validator scripts (hot-reloaded) |
+| `.afd/rules/` | Custom diagnostic rules (YAML) |
+| `.afd/config.yml` | Per-workspace configuration (optional) |
