@@ -1,13 +1,15 @@
 /**
- * afd watch — Real-time Security Dashboard
+ * afd watch — Security Command Center
  *
- * Connects to daemon SSE endpoint and renders live events
- * with user-friendly narrative messages.
+ * Split-pane TUI: left=vital stats, right=live event stream.
+ * Connects to daemon SSE + polls /score and /shift-summary.
  */
 
 import { daemonRequest, getDaemonInfo } from "../daemon/client";
 import { getSystemLanguage } from "../core/locale";
+import type { ShiftSummary } from "../core/boast";
 
+// ── ANSI ──
 const C = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
@@ -20,54 +22,32 @@ const C = {
   white: "\x1b[37m",
 };
 
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+
+// ── i18n ──
 const msgs = {
   en: {
-    title: "Security Monitor",
+    title: "afd Command Center",
     connecting: "Connecting to daemon...",
     notRunning: "Daemon not running. Start with: afd start",
-    uptime: "Uptime",
-    events: "Events",
-    heals: "Protected",
-    antibodies: "Antibodies",
-    hologram: "Efficiency",
-    ecosystem: "Ecosystem",
-    liveEvents: "Live Activity",
-    evolution: "Evolution",
-    quit: "Press Ctrl+C to quit",
-    noEvents: "All quiet. Watching for threats...",
-    noise: "system events filtered",
+    noEvents: "Watching for threats...",
+    noise: "noise filtered",
   },
   ko: {
-    title: "보안 모니터",
+    title: "afd 커맨드 센터",
     connecting: "데몬에 연결 중...",
     notRunning: "데몬이 실행 중이 아닙니다. afd start로 시작하세요.",
-    uptime: "가동 시간",
-    events: "이벤트",
-    heals: "보호됨",
-    antibodies: "항체",
-    hologram: "효율",
-    ecosystem: "에코시스템",
-    liveEvents: "실시간 활동",
-    evolution: "진화 상태",
-    quit: "Ctrl+C로 종료",
-    noEvents: "이상 없음. 위협을 감시 중...",
-    noise: "시스템 이벤트 필터링됨",
+    noEvents: "위협을 감시 중...",
+    noise: "노이즈 필터링",
   },
 };
 
-const BOX = { tl: "┌", tr: "┐", bl: "└", br: "┘", h: "─", v: "│", ml: "├", mr: "┤" };
-const W = 62;
-
-function hline(l: string, r: string) { return `${l}${BOX.h.repeat(W)}${r}`; }
-function row(s: string) {
+// ── Visual width (CJK/emoji aware) ──
+function vw(s: string): number {
   const stripped = s.replace(/\x1b\[[0-9;]*m/g, "");
-  const pad = Math.max(0, W - 2 - visualWidth(stripped));
-  return `${BOX.v} ${s}${" ".repeat(pad)} ${BOX.v}`;
-}
-
-function visualWidth(s: string): number {
   let w = 0;
-  for (const ch of s) {
+  for (const ch of stripped) {
     const cp = ch.codePointAt(0)!;
     if ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x2e80 && cp <= 0x9fff) ||
         (cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0xf900 && cp <= 0xfaff) ||
@@ -77,18 +57,26 @@ function visualWidth(s: string): number {
   return w;
 }
 
-function kv(label: string, value: string) {
-  const stripped = label.replace(/\x1b\[[0-9;]*m/g, "");
-  const gap = 14 - visualWidth(stripped);
-  return row(`${C.dim}${label}${C.reset}${" ".repeat(Math.max(1, gap))}${value}`);
-}
-
-function gaugeBar(value: number, max: number, width = 16): string {
-  const ratio = Math.min(value / Math.max(max, 1), 1);
-  const filled = Math.round(ratio * width);
-  const empty = width - filled;
-  const color = ratio >= 0.7 ? C.green : ratio >= 0.4 ? C.yellow : C.red;
-  return `${color}${"█".repeat(filled)}${C.dim}${"░".repeat(empty)}${C.reset}`;
+/** Pad/truncate content to exact visual width */
+function fit(s: string, width: number): string {
+  const w = vw(s);
+  if (w >= width) {
+    // Truncate
+    let len = 0; let cut = 0;
+    for (const ch of s) {
+      // Skip ANSI sequences
+      if (ch === "\x1b") { cut += ch.length; continue; }
+      const cp = ch.codePointAt(0)!;
+      const cw = ((cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x2e80 && cp <= 0x9fff) ||
+        (cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0xf900 && cp <= 0xfaff) ||
+        (cp >= 0x1f000 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x2fa1f)) ? 2 : 1;
+      if (len + cw > width - 1) break;
+      len += cw;
+      cut += ch.length;
+    }
+    return s.slice(0, cut) + "…" + " ".repeat(Math.max(0, width - len - 1));
+  }
+  return s + " ".repeat(width - w);
 }
 
 function formatUptime(seconds: number): string {
@@ -99,131 +87,82 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
-/** Noise filter: skip tmp files, metadata-only changes */
-const NOISE_PATTERNS = [/\.tmp$/, /\.swp$/, /~$/, /\.DS_Store/, /thumbs\.db/i];
+function fmtNum(n: number): string {
+  if (n < 1000) return `${n}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
 
+// ── Noise filter ──
+const NOISE_PATTERNS = [/\.tmp$/, /\.swp$/, /~$/, /\.DS_Store/, /thumbs\.db/i];
 function isNoise(msg: string): boolean {
   return NOISE_PATTERNS.some(p => p.test(msg));
 }
 
-/** Transform raw S.E.A.M events into user-friendly narratives */
-function narrativeEvent(phase: string, msg: string, lang: "en" | "ko"): { icon: string; text: string; color: string } {
-  const fileName = extractFileName(msg);
-
-  // Mutate (heal/restore) — highest priority
-  if (phase === "Mutate") {
-    if (msg.includes("Restoring") || msg.includes("Restored") || msg.includes("corruption")) {
-      return {
-        icon: "🚨",
-        text: lang === "ko"
-          ? `PROTECTED: ${fileName} AI 손상 복구 완료`
-          : `PROTECTED: AI-induced corruption in ${fileName} reverted`,
-        color: C.red,
-      };
-    }
-    return { icon: "💉", text: msg.slice(0, 50), color: C.yellow };
-  }
-
-  // Adapt (learning)
-  if (phase === "Adapt") {
-    if (msg.includes("seeded") || msg.includes("updated")) {
-      return {
-        icon: "🧬",
-        text: lang === "ko"
-          ? `${fileName} 유전 메모리 업데이트`
-          : `Genetic memory updated for ${fileName}`,
-        color: C.cyan,
-      };
-    }
-    if (msg.includes("Double-tap") || msg.includes("dormant")) {
-      return {
-        icon: "🤝",
-        text: lang === "ko"
-          ? `사용자 의도 확인 — ${fileName} 보호 해제`
-          : `User intent confirmed — standing down on ${fileName}`,
-        color: C.dim,
-      };
-    }
-    return { icon: "🧪", text: msg.slice(0, 50), color: C.yellow };
-  }
-
-  // Quarantine
-  if (phase === "Quarantine") {
-    return {
-      icon: "🔒",
-      text: lang === "ko"
-        ? `${fileName} 격리 저장됨`
-        : `Quarantined ${fileName} for analysis`,
-      color: C.magenta,
-    };
-  }
-
-  // Sense (scanning/detection)
-  if (phase === "Sense") {
-    if (msg.includes("unlink")) {
-      return {
-        icon: "⚠️",
-        text: lang === "ko"
-          ? `삭제 감지: ${fileName}`
-          : `Deletion detected: ${fileName}`,
-        color: C.red,
-      };
-    }
-    if (msg.includes("change")) {
-      return {
-        icon: "👀",
-        text: lang === "ko"
-          ? `${fileName} 변경 스캔 중...`
-          : `Scanning changes in ${fileName}...`,
-        color: C.dim,
-      };
-    }
-    if (msg.includes("Smart Discovery")) {
-      return { icon: "🔍", text: msg.slice(0, 50), color: C.cyan };
-    }
-    return { icon: "📡", text: msg.slice(0, 50), color: C.dim };
-  }
-
-  // Extract (hologram tips)
-  if (phase === "Extract") {
-    return { icon: "💡", text: msg.slice(0, 50), color: C.cyan };
-  }
-
-  return { icon: "📌", text: msg.slice(0, 50), color: C.dim };
-}
-
+// ── Narrative ──
 function extractFileName(msg: string): string {
   const match = msg.match(/→\s*(\S+)/) || msg.match(/(?:in|on|for)\s+(\S+)/);
   if (match) {
     const name = match[1].replace(/[().,;]+$/, "");
-    return name.length > 30 ? "..." + name.slice(-27) : name;
+    return name.length > 25 ? "…" + name.slice(-22) : name;
   }
   return "file";
 }
 
+function narrativeEvent(phase: string, msg: string, lang: "en" | "ko"): { icon: string; text: string; color: string } {
+  const f = extractFileName(msg);
+  if (phase === "Mutate") {
+    if (msg.includes("Restoring") || msg.includes("Restored") || msg.includes("corruption"))
+      return { icon: "🚨", text: lang === "ko" ? `차단: ${f} 손상 복구 완료` : `BLOCKED: ${f} corruption reverted`, color: C.red };
+    return { icon: "🩹", text: lang === "ko" ? `복구 완료: ${f}` : `Restored: ${f}`, color: C.yellow };
+  }
+  if (phase === "Adapt") {
+    if (msg.includes("seeded") || msg.includes("updated"))
+      return { icon: "🧬", text: lang === "ko" ? `${f} 메모리 업데이트` : `Memory updated: ${f}`, color: C.cyan };
+    if (msg.includes("Double-tap") || msg.includes("dormant"))
+      return { icon: "🤝", text: lang === "ko" ? `${f} 보호 해제` : `Standing down: ${f}`, color: C.dim };
+    if (msg.includes("Validator"))
+      return { icon: "🧬", text: msg.slice(0, 45), color: C.cyan };
+    return { icon: "🧪", text: msg.slice(0, 45), color: C.yellow };
+  }
+  if (phase === "Quarantine")
+    return { icon: "🔒", text: lang === "ko" ? `${f} 격리 저장` : `Quarantined: ${f}`, color: C.magenta };
+  if (phase === "Sense") {
+    if (msg.includes("unlink"))
+      return { icon: "⚠️", text: lang === "ko" ? `삭제 감지: ${f}` : `Deletion: ${f}`, color: C.red };
+    if (msg.includes("change"))
+      return { icon: "👀", text: lang === "ko" ? `AI가 ${f} 접근 중...` : `AI accessing ${f}...`, color: C.dim };
+    return { icon: "🔍", text: msg.slice(0, 45), color: C.dim };
+  }
+  if (phase === "Extract")
+    return { icon: "☁️", text: lang === "ko" ? `토큰 압축: ${f}` : `Token compress: ${f}`, color: C.cyan };
+  return { icon: "📌", text: msg.slice(0, 45), color: C.dim };
+}
+
+// ── Sparkline ──
+const SPARK_CHARS = " ▁▂▃▄▅▆▇";
+function sparkline(buckets: number[]): string {
+  const max = Math.max(...buckets, 1);
+  return buckets.map(v => SPARK_CHARS[Math.min(Math.round(v / max * 7), 7)]).join("");
+}
+
+// ── Types ──
 interface ScoreData {
   uptime: number;
   filesDetected: number;
   totalEvents: number;
+  watchedFiles: string[];
   immune: { antibodies: number; autoHealed: number };
   hologram: { lifetime: { requests: number; savings: number } };
   ecosystem: { primary: string };
   evolution?: { totalQuarantined: number; totalLearned: number; pending: number };
+  dynamicImmune?: { activeValidators: number; validatorNames: string[] };
 }
 
-interface LiveEvent {
-  phase: string;
-  msg: string;
-  ts: number;
-}
+interface LiveEvent { phase: string; msg: string; ts: number; }
+interface DisplayEvent { icon: string; text: string; color: string; time: string; }
 
-interface DisplayEvent {
-  icon: string;
-  text: string;
-  color: string;
-  time: string;
-}
-
+// ══════════════════════════════════════════════════════════
 export async function watchCommand() {
   const lang = getSystemLanguage();
   const m = msgs[lang];
@@ -236,111 +175,195 @@ export async function watchCommand() {
 
   console.log(`${C.dim}${m.connecting}${C.reset}`);
 
+  // ── State ──
   let score: ScoreData | null = null;
+  let roi: ShiftSummary | null = null;
   const displayLog: DisplayEvent[] = [];
-  const MAX_EVENTS = 12;
+  const MAX_EVENTS = 20;
   let noiseCount = 0;
+  const activityBuckets: number[] = new Array(20).fill(0);
+  let bucketIndex = 0;
+  let lastRender = "";
 
-  async function refreshScore() {
-    try {
-      score = await daemonRequest<ScoreData>("/score");
-    } catch { /* daemon might stop */ }
+  // ── Data fetchers ──
+  async function refreshAll() {
+    try { score = await daemonRequest<ScoreData>("/score"); } catch {}
+    try { roi = await daemonRequest<ShiftSummary>("/shift-summary"); } catch {}
   }
 
-  await refreshScore();
-  const scoreInterval = setInterval(refreshScore, 5000);
+  await refreshAll();
+  const scoreInterval = setInterval(refreshAll, 5000);
 
-  // Connect SSE
+  // Activity bucket rotation (every 3s)
+  const bucketInterval = setInterval(() => {
+    bucketIndex = (bucketIndex + 1) % activityBuckets.length;
+    activityBuckets[bucketIndex] = 0;
+  }, 3000);
+
+  // ── SSE ──
   const sseAbort = new AbortController();
-  connectSSE();
-
-  function connectSSE() {
-    fetch(`http://127.0.0.1:${info!.port}/events`, {
-      signal: sseAbort.signal,
-    }).then(async (res) => {
+  fetch(`http://127.0.0.1:${info.port}/events`, { signal: sseAbort.signal })
+    .then(async (res) => {
       if (!res.body) return;
       const decoder = new TextDecoder();
       const reader = res.body.getReader();
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const text = decoder.decode(value);
-        const lines = text.split("\n");
-        for (const line of lines) {
+        for (const line of text.split("\n")) {
           if (!line.startsWith("data: ")) continue;
           try {
             const evt = JSON.parse(line.slice(6)) as LiveEvent;
-
-            // Filter noise
-            if (isNoise(evt.msg)) {
-              noiseCount++;
-              continue;
-            }
-
+            activityBuckets[bucketIndex]++;
+            if (isNoise(evt.msg)) { noiseCount++; continue; }
             const narrative = narrativeEvent(evt.phase, evt.msg, lang);
             const time = new Date(evt.ts).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
             displayLog.push({ ...narrative, time });
             if (displayLog.length > MAX_EVENTS) displayLog.shift();
             render();
-          } catch { /* skip */ }
+          } catch {}
         }
       }
-    }).catch(() => { /* connection lost */ });
+    }).catch(() => {});
+
+  // ── Layout constants ──
+  const LW = 36; // left pane inner width
+  const RW = 42; // right pane inner width
+  const TW = LW + RW + 3; // total width (│ left │ right │)
+  const H_LINE = "─";
+  const V = "│";
+
+  function hTop() { return `╭${H_LINE.repeat(LW)}┬${H_LINE.repeat(RW)}╮`; }
+  function hMid() { return `├${H_LINE.repeat(LW)}┼${H_LINE.repeat(RW)}┤`; }
+  function hMidL() { return `├${H_LINE.repeat(LW)}┤${" ".repeat(RW)}│`; }
+  function hBot() { return `╰${H_LINE.repeat(LW)}┴${H_LINE.repeat(RW)}╯`; }
+  function dualRow(left: string, right: string): string {
+    return `${V}${fit(left, LW)}${V}${fit(right, RW)}${V}`;
   }
 
+  // ── Render ──
   function render() {
     const lines: string[] = [];
 
-    lines.push("\x1b[2J\x1b[H");
+    // Title bar
+    const titleL = ` 🛡️  ${C.bold}${m.title}${C.reset}`;
+    const titleR = ` ${C.bold}⚡ ${lang === "ko" ? "실시간 이벤트" : "Live Events"}${C.reset}`;
+    lines.push(hTop());
+    lines.push(dualRow(titleL, titleR));
+    lines.push(hMid());
 
-    // Header
-    lines.push(hline(BOX.tl, BOX.tr));
-    lines.push(row(`${C.bold}🛡️  ${m.title}${C.reset}`));
-    lines.push(hline(BOX.ml, BOX.mr));
+    // ── Left: Vital Stats ──
+    const up = score ? formatUptime(score.uptime) : "--";
+    const eco = score?.ecosystem.primary ?? "?";
+    const ab = score?.immune.antibodies ?? 0;
+    const healed = score?.immune.autoHealed ?? 0;
+    const validators = score?.dynamicImmune?.activeValidators ?? 0;
+    const totalTokens = roi ? fmtNum(roi.totalTokensSaved) : "0";
+    const totalCost = roi ? `$${roi.totalCostSaved.toFixed(2)}` : "$0.00";
 
-    if (score) {
-      lines.push(kv(m.ecosystem, `${C.bold}${C.white}${score.ecosystem.primary}${C.reset}`));
-      lines.push(kv(m.uptime, `${C.green}${formatUptime(score.uptime)}${C.reset}`));
-      lines.push(kv(m.events, `${score.totalEvents}`));
-      lines.push(kv(m.heals, `${C.bold}${C.green}${score.immune.autoHealed}${C.reset}`));
-      lines.push(kv(m.antibodies, `${score.immune.antibodies}  ${gaugeBar(score.immune.antibodies, 10, 12)}`));
+    // Row builder for left pane
+    const leftLines: string[] = [];
 
-      const holoSav = score.hologram.lifetime.savings;
-      lines.push(kv(m.hologram, `${score.hologram.lifetime.requests} req  ${gaugeBar(holoSav, 100, 12)}`));
+    // System
+    leftLines.push(` ${C.green}●${C.reset} ${C.bold}${eco}${C.reset} ${C.dim}(${up})${C.reset}`);
+    leftLines.push("");
 
-      if (score.evolution) {
-        const evo = score.evolution;
-        lines.push(kv(m.evolution, `${evo.totalLearned} learned / ${evo.pending} pending`));
-      }
+    // ROI
+    leftLines.push(` ${C.bold}${lang === "ko" ? "💰 누적 ROI" : "💰 Total ROI"}${C.reset}`);
+    leftLines.push(` ${C.green}${C.bold}${totalCost}${C.reset} ${C.dim}(${totalTokens} tok)${C.reset}`);
+    if (roi && (roi.healCostSaved > 0 || roi.hologramCostSaved > 0)) {
+      leftLines.push(` ${C.dim}  🩹 $${roi.healCostSaved.toFixed(2)}  💎 $${roi.hologramCostSaved.toFixed(2)}${C.reset}`);
+    }
+    leftLines.push("");
+
+    // Defenses
+    leftLines.push(` ${C.bold}${lang === "ko" ? "🧬 면역 상태" : "🧬 Immune"}${C.reset}`);
+    leftLines.push(` ${C.dim}${lang === "ko" ? "항체" : "Antibodies"}${C.reset}  ${C.bold}${ab}${C.reset}${healed > 0 ? `  ${C.dim}(${healed} ${lang === "ko" ? "치유" : "healed"})${C.reset}` : ""}`);
+    if (validators > 0) {
+      leftLines.push(` ${C.dim}${lang === "ko" ? "검증기" : "Validators"}${C.reset} ${C.green}${validators}${C.reset} ${C.dim}active${C.reset}`);
+    }
+    leftLines.push("");
+
+    // Activity sparkline
+    leftLines.push(` ${C.bold}${lang === "ko" ? "📈 활동량" : "📈 Activity"}${C.reset}`);
+    leftLines.push(` ${C.cyan}${sparkline(activityBuckets)}${C.reset}`);
+    leftLines.push("");
+
+    // Active shields
+    leftLines.push(` ${C.bold}${lang === "ko" ? "🔒 보호 파일" : "🔒 Active Shields"}${C.reset}`);
+    if (score && score.watchedFiles.length > 0) {
+      // Show immune-critical files first, then others
+      const immuneFiles = score.watchedFiles
+        .map(f => f.replace(/\\/g, "/").split("/").pop() ?? f)
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .slice(0, 4);
+      leftLines.push(` ${C.dim}${immuneFiles.join(", ")}${C.reset}`);
+    } else {
+      leftLines.push(` ${C.dim}--${C.reset}`);
     }
 
-    // Live events
-    lines.push(hline(BOX.ml, BOX.mr));
-    lines.push(row(`${C.bold}${m.liveEvents}${C.reset}`));
-    lines.push(row(`${C.dim}${BOX.h.repeat(W - 4)}${C.reset}`));
+    // ── Right: Event stream ──
+    const rightLines: string[] = [];
 
     if (displayLog.length === 0) {
-      lines.push(row(`  ${C.dim}${m.noEvents}${C.reset}`));
+      rightLines.push(` ${C.dim}🔍 ${m.noEvents}${C.reset}`);
     } else {
       for (const evt of displayLog) {
-        const truncText = evt.text.length > 42 ? evt.text.slice(0, 39) + "..." : evt.text;
-        lines.push(row(`${evt.icon} ${C.dim}${evt.time}${C.reset} ${evt.color}${truncText}${C.reset}`));
+        const maxTextW = RW - 12; // icon(2) + time(8) + spaces(2)
+        const truncText = vw(evt.text) > maxTextW
+          ? evt.text.slice(0, maxTextW - 1) + "…"
+          : evt.text;
+        rightLines.push(` ${evt.icon} ${C.dim}${evt.time}${C.reset} ${evt.color}${truncText}${C.reset}`);
       }
     }
 
     if (noiseCount > 0) {
-      lines.push(row(`  ${C.dim}(${noiseCount} ${m.noise})${C.reset}`));
+      rightLines.push(` ${C.dim}(${noiseCount} ${m.noise})${C.reset}`);
     }
 
-    lines.push(hline(BOX.ml, BOX.mr));
-    lines.push(row(`${C.dim}💡 ${m.quit}${C.reset}`));
-    lines.push(hline(BOX.bl, BOX.br));
+    // Merge left & right into dual rows
+    const maxRows = Math.max(leftLines.length, rightLines.length, 12);
+    for (let i = 0; i < maxRows; i++) {
+      const l = leftLines[i] ?? "";
+      const r = rightLines[i] ?? "";
+      lines.push(dualRow(l, r));
+    }
 
-    process.stdout.write(lines.join("\n") + "\n");
+    // Footer
+    lines.push(hBot());
+    lines.push(` ${C.dim}💡 [Q]${lang === "ko" ? "종료" : "Quit"}  [C]${lang === "ko" ? "화면정리" : "Clear"}${C.reset}`);
+
+    const frame = lines.join("\n") + "\n";
+
+    // Flicker prevention: only write if content changed
+    if (frame !== lastRender) {
+      process.stdout.write("\x1b[H\x1b[2J" + frame);
+      lastRender = frame;
+    }
   }
 
+  // ── Keyboard input ──
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", (key: Buffer) => {
+      const ch = key.toString();
+      // q / Q / Esc
+      if (ch === "q" || ch === "Q" || ch === "\x1b") {
+        shutdown();
+      }
+      // c / C — clear event log
+      if (ch === "c" || ch === "C") {
+        displayLog.length = 0;
+        noiseCount = 0;
+        render();
+      }
+    });
+  }
+
+  // ── Initial render + timers ──
+  process.stdout.write(HIDE_CURSOR);
   render();
 
   const renderInterval = setInterval(() => {
@@ -348,11 +371,16 @@ export async function watchCommand() {
     render();
   }, 1000);
 
-  process.on("SIGINT", () => {
+  function shutdown() {
     clearInterval(scoreInterval);
     clearInterval(renderInterval);
+    clearInterval(bucketInterval);
     sseAbort.abort();
-    console.log("\n");
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    process.stdout.write(SHOW_CURSOR + "\n");
     process.exit(0);
-  });
+  }
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
