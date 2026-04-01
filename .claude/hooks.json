@@ -5,6 +5,11 @@
         "id": "afd-auto-heal",
         "matcher": "",
         "command": "afd diagnose --format a2a --auto-heal"
+      },
+      {
+        "id": "afd-read-gate",
+        "matcher": "Read",
+        "command": "bash .claude/read-gate.sh"
       }
     ]
   }
