@@ -80,3 +80,28 @@ Completely overwrite the contents of the current `CLAUDE.md` with the new archit
 - **Message Format:** Commit message titles must strictly follow the format: **`English prefix: English title (Korean summary)`**.
   - ✅ Example: `feat: implement S.E.A.M extract logic (S.E.A.M 추출 로직 구현)`
   - ✅ Example: `fix: resolve SQLite WAL mode lock (SQLite WAL 모드 잠금 해결)`
+
+## 7. Lean Agent Mode (afd Dev Minimum Set)
+To avoid token waste and context pollution, only invoke subagents from the approved list below.
+
+**Core agents (7) — always approved:**
+- `oh-my-claudecode:executor` — implementation tasks
+- `oh-my-claudecode:explore` — codebase exploration
+- `oh-my-claudecode:debugger` — daemon bug analysis
+- `oh-my-claudecode:tracer` — causal tracing and hypothesis testing
+- `oh-my-claudecode:architect` — S.E.A.M / immune system architecture decisions
+- `oh-my-claudecode:git-master` — commits and branch management
+- `oh-my-claudecode:verifier` — implementation verification
+
+**Auxiliary agents (5) — use when genuinely needed:**
+- `oh-my-claudecode:analyst` — complex requirements analysis
+- `oh-my-claudecode:critic` — plan/code critical review
+- `oh-my-claudecode:planner` — internal to `/plan` skill only
+- `oh-my-claudecode:test-engineer` — test strategy
+- `oh-my-claudecode:security-reviewer` — immune system security audit
+
+**Avoid (8) — not relevant to afd development:**
+`designer`, `document-specialist`, `scientist`, `writer`, `qa-tester`, `code-reviewer`, `code-simplifier`, `oh-my-claudecode:architect` (do not call standalone outside `/plan`)
+
+**Disabled MCP tools (require user approval if called):**
+`python_repl`, `ast_grep_search`, `ast_grep_replace`, `lsp_code_actions`, `lsp_code_action_resolve`, `lsp_prepare_rename`, `lsp_servers`
