@@ -153,7 +153,7 @@ interface ScoreData {
   totalEvents: number;
   watchedFiles: string[];
   immune: { antibodies: number; autoHealed: number };
-  hologram: { lifetime: { requests: number; savings: number } };
+  hologram: { lifetime: { requests: number; savings: number; originalChars: number; hologramChars: number } };
   ecosystem: { primary: string };
   evolution?: { totalQuarantined: number; totalLearned: number; pending: number };
   dynamicImmune?: { activeValidators: number; validatorNames: string[] };
@@ -259,8 +259,6 @@ export async function watchCommand() {
     const ab = score?.immune.antibodies ?? 0;
     const healed = score?.immune.autoHealed ?? 0;
     const validators = score?.dynamicImmune?.activeValidators ?? 0;
-    const totalTokens = roi ? fmtNum(roi.totalTokensSaved) : "0";
-    const totalCost = roi ? `$${roi.totalCostSaved.toFixed(2)}` : "$0.00";
 
     // Row builder for left pane
     const leftLines: string[] = [];
@@ -269,11 +267,29 @@ export async function watchCommand() {
     leftLines.push(` ${C.green}●${C.reset} ${C.bold}${eco}${C.reset} ${C.dim}(${up})${C.reset}`);
     leftLines.push("");
 
-    // ROI
-    leftLines.push(` ${C.bold}${lang === "ko" ? "💰 누적 ROI" : "💰 Total ROI"}${C.reset}`);
-    leftLines.push(` ${C.green}${C.bold}${totalCost}${C.reset} ${C.dim}(${totalTokens} tok)${C.reset}`);
-    if (roi && (roi.healCostSaved > 0 || roi.hologramCostSaved > 0)) {
-      leftLines.push(` ${C.dim}  🩹 $${roi.healCostSaved.toFixed(2)}  💎 $${roi.hologramCostSaved.toFixed(2)}${C.reset}`);
+    // ROI — token comparison table
+    leftLines.push(` ${C.bold}${lang === "ko" ? "💰 토큰 절감 비교" : "💰 Token Savings"}${C.reset}`);
+    const origChars = score?.hologram.lifetime.originalChars ?? 0;
+    const holoChars = score?.hologram.lifetime.hologramChars ?? 0;
+    const savedChars = origChars - holoChars;
+    const holoReqs = score?.hologram.lifetime.requests ?? 0;
+
+    if (holoReqs > 0) {
+      const origTok = fmtNum(Math.round(origChars / 3.5));
+      const holoTok = fmtNum(Math.round(holoChars / 3.5));
+      const savedTok = fmtNum(Math.round(savedChars / 3.5));
+      const pct = Math.round(savedChars / Math.max(origChars, 1) * 100);
+      leftLines.push(` ${C.dim}${lang === "ko" ? "원본" : "Original"}${C.reset} ${C.red}${origTok}${C.reset} tok`);
+      leftLines.push(` ${C.dim}${lang === "ko" ? "압축" : "Sent"}${C.reset}   ${C.green}${holoTok}${C.reset} tok`);
+      leftLines.push(` ${C.dim}${lang === "ko" ? "절약" : "Saved"}${C.reset}  ${C.bold}${C.green}${savedTok}${C.reset} tok ${C.dim}(${pct}%)${C.reset}`);
+    } else {
+      leftLines.push(` ${C.dim}${lang === "ko" ? "아직 데이터 없음" : "No data yet"}${C.reset}`);
+    }
+
+    // Cost
+    const totalCost = roi ? `$${roi.totalCostSaved.toFixed(2)}` : "$0.00";
+    if (roi && roi.totalCostSaved > 0) {
+      leftLines.push(` ${C.dim}${lang === "ko" ? "비용" : "Cost"}${C.reset}  ${C.bold}${C.green}~${totalCost}${C.reset} ${C.dim}saved${C.reset}`);
     }
     leftLines.push("");
 
