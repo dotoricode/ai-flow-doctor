@@ -130,6 +130,18 @@ export function main(options: DaemonOptions = {}) {
   const getDailyAll = db.prepare("SELECT date, requests, original_chars, hologram_chars FROM hologram_daily ORDER BY date DESC LIMIT 7");
   const purgeOldDaily = db.prepare("DELETE FROM hologram_daily WHERE date < date('now', '-7 days')");
 
+  // ── Telemetry ──
+  const insertTelemetry = db.prepare(
+    "INSERT INTO telemetry (category, action, detail, duration_ms, timestamp) VALUES (?, ?, ?, ?, ?)"
+  );
+  const queryTelemetryCount = db.prepare(
+    "SELECT COUNT(*) as cnt FROM telemetry WHERE category = ? AND action = ?"
+  );
+
+  function trackEvent(category: string, action: string, detail?: string, durationMs?: number) {
+    try { insertTelemetry.run(category, action, detail ?? null, durationMs ?? null, Date.now()); } catch { /* crash-only */ }
+  }
+
   function today(): string { return new Date().toISOString().slice(0, 10); }
 
   // Load persisted hologram stats
@@ -262,7 +274,7 @@ export function main(options: DaemonOptions = {}) {
         const result = fn(newContent, filePath);
         const elapsed = performance.now() - t0;
         if (elapsed > VALIDATOR_TIMEOUT_MS) seam("Adapt", `⚠️ Validator ${name} took ${Math.round(elapsed)}ms (>${VALIDATOR_TIMEOUT_MS}ms)`);
-        if (result === true) { seam("Adapt", `🛡️ Custom validator ${name} flagged corruption in ${filePath}`); return true; }
+        if (result === true) { trackEvent("validator", name, filePath); seam("Adapt", `🛡️ Custom validator ${name} flagged corruption in ${filePath}`); return true; }
       } catch (err) {
         seam("Adapt", `⚠️ Validator ${name} threw error — ignored: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -301,6 +313,7 @@ export function main(options: DaemonOptions = {}) {
       state.autoHealCount++;
       state.totalFileBytesSaved += bytesWritten;
       state.autoHealLog.push({ id: antibodyId, at: Date.now() });
+      trackEvent("immune", "heal_hit", JSON.stringify({ antibodyId, fileTarget, bytesWritten, healMs }));
       if (state.autoHealLog.length > 100) state.autoHealLog.shift();
       const metrics = calcHealMetrics(bytesWritten, healMs);
       const boast = maybeHealBoast(5);
@@ -314,7 +327,7 @@ export function main(options: DaemonOptions = {}) {
   function handleUnlink(filePath: string, now: number): "healed" | "dormant" | null {
     state.recentUnlinks.push(now);
     insertUnlinkLog.run(filePath, now);
-    if (isMassEvent(now)) { state.suppressionSkippedCount++; state.firstTapTimestamps.clear(); return null; }
+    if (isMassEvent(now)) { state.suppressionSkippedCount++; trackEvent("immune", "suppression", JSON.stringify({ filePath })); state.firstTapTimestamps.clear(); return null; }
     const antibody = findAntibodyByFile.get(filePath) as { id: string; dormant: number } | null;
     if (!antibody) return null;
     const fullAntibody = db.prepare("SELECT * FROM antibodies WHERE id = ?").get(antibody.id) as { id: string; patch_op: string; file_target: string } | null;
@@ -325,6 +338,7 @@ export function main(options: DaemonOptions = {}) {
       state.firstTapTimestamps.delete(filePath);
       state.dormantTransitions.push({ antibodyId: antibody.id, at: now });
       if (state.dormantTransitions.length > 100) state.dormantTransitions.shift();
+      trackEvent("immune", "dormant", JSON.stringify({ antibodyId: antibody.id }));
       (options.mcp ? console.error : console.log)(formatDormantLog(antibody.id));
       return "dormant";
     }
@@ -368,6 +382,7 @@ export function main(options: DaemonOptions = {}) {
   watcher.on("all", (event, path) => {
     if (isInternalPath(path)) return;
     if (selfWrites.has(path)) return;
+    const _seamStart = performance.now();
 
     state.filesDetected++;
     state.lastEvent = `${event}:${path}`;
@@ -375,7 +390,7 @@ export function main(options: DaemonOptions = {}) {
     state.watchedFiles.add(path);
     insertEvent.run(event, path, Date.now());
 
-    if (event === "add" || event === "addDir") { seam("Sense", `${event} → ${path}`); snapshotFile(path); return; }
+    if (event === "add" || event === "addDir") { seam("Sense", `${event} → ${path}`); snapshotFile(path); trackEvent("seam", "sense", null, Math.round(performance.now() - _seamStart)); return; }
 
     if (event === "unlink") {
       seam("Sense", `unlink → ${path}`);
@@ -391,6 +406,7 @@ export function main(options: DaemonOptions = {}) {
       } else if (result === "dormant") {
         seam("Adapt", `Double-tap confirmed — user intentionally deleted ${path}, antibody deactivated`);
       }
+      trackEvent("seam", event, path, Math.round(performance.now() - _seamStart));
       return;
     }
 
@@ -432,6 +448,7 @@ export function main(options: DaemonOptions = {}) {
             corruptionTaps.delete(path);
             state.fileSnapshots.set(path, newContent);
             insertAntibody.run(abId, "auto-seed", path, JSON.stringify([{ op: "add", path: `/${path}`, value: newContent }]));
+            trackEvent("immune", "heal_false_positive", JSON.stringify({ filePath: path, abId }));
             seam("Adapt", `Corruption double-tap on ${path} — standing down, accepting new content`);
           } else {
             corruptionTaps.set(path, now);
@@ -439,6 +456,7 @@ export function main(options: DaemonOptions = {}) {
             selfWrites.add(path);
             setTimeout(() => selfWrites.delete(path), SELF_WRITE_DEBOUNCE_MS);
             writeFileSync(resolve(path), oldContent, "utf-8");
+            trackEvent("immune", "heal_hit", JSON.stringify({ filePath: path, abId }));
             seam("Mutate", `Silent corruption detected in ${path} (${oldContent.length} → ${newSize} bytes) — restored from snapshot`);
             seam("Extract", `💡 Tip: Use the MCP tool 'afd_hologram' on ${path} to safely inspect the file's structure before attempting another edit.`);
           }
@@ -446,15 +464,18 @@ export function main(options: DaemonOptions = {}) {
           state.fileSnapshots.set(path, newContent);
           const patches: PatchOp[] = [{ op: "add", path: `/${path}`, value: newContent }];
           insertAntibody.run(abId, "auto-seed", path, JSON.stringify(patches));
+          trackEvent("immune", "heal_pass", JSON.stringify({ filePath: path, abId }));
           seam("Adapt", `Antibody ${abId} updated: stored latest ${path} (${newSize} bytes) for auto-restore`);
         }
       } else {
         state.fileSnapshots.set(path, newContent);
       }
+      trackEvent("seam", "change", path, Math.round(performance.now() - _seamStart));
       return;
     }
 
     seam("Sense", `${event} → ${path}`);
+    trackEvent("seam", event, path, Math.round(performance.now() - _seamStart));
   });
 
   // ── Workspace Map ──
@@ -470,6 +491,8 @@ export function main(options: DaemonOptions = {}) {
     insertEvent, insertAntibody, listAntibodies, antibodyIds: antibodyIds as unknown as DaemonContext["antibodyIds"],
     countAntibodies: countAntibodies as unknown as DaemonContext["countAntibodies"],
     getDailyAll: getDailyAll as unknown as DaemonContext["getDailyAll"],
+    insertTelemetry: insertTelemetry as unknown as DaemonContext["insertTelemetry"],
+    queryTelemetryCount: queryTelemetryCount as unknown as DaemonContext["queryTelemetryCount"],
     seam, persistHologramStats, safeHologram,
     getWorkspaceMap: wsMap.get, today, discoveryTargets: discovery.targets,
     port: 0,
