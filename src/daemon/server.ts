@@ -134,10 +134,6 @@ export function main(options: DaemonOptions = {}) {
   const insertTelemetry = db.prepare(
     "INSERT INTO telemetry (category, action, detail, duration_ms, timestamp) VALUES (?, ?, ?, ?, ?)"
   );
-  const queryTelemetryCount = db.prepare(
-    "SELECT COUNT(*) as cnt FROM telemetry WHERE category = ? AND action = ?"
-  );
-
   function trackEvent(category: string, action: string, detail?: string, durationMs?: number) {
     try { insertTelemetry.run(category, action, detail ?? null, durationMs ?? null, Date.now()); } catch { /* crash-only */ }
   }
@@ -492,7 +488,6 @@ export function main(options: DaemonOptions = {}) {
     countAntibodies: countAntibodies as unknown as DaemonContext["countAntibodies"],
     getDailyAll: getDailyAll as unknown as DaemonContext["getDailyAll"],
     insertTelemetry: insertTelemetry as unknown as DaemonContext["insertTelemetry"],
-    queryTelemetryCount: queryTelemetryCount as unknown as DaemonContext["queryTelemetryCount"],
     seam, persistHologramStats, safeHologram,
     getWorkspaceMap: wsMap.get, today, discoveryTargets: discovery.targets,
     port: 0,

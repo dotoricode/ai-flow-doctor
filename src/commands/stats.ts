@@ -20,7 +20,7 @@ function sortedEntries(obj: Record<string, number>): [string, number][] {
   return Object.entries(obj).sort((a, b) => b[1] - a[1]);
 }
 
-function renderRankedList(title: string, data: Record<string, number>, barWidth = 16): string[] {
+function renderRankedList(data: Record<string, number>, barWidth = 16): string[] {
   const entries = sortedEntries(data);
   if (entries.length === 0) return [`  ${C.dim}(no data)${C.reset}`];
   const maxVal = entries[0][1];
@@ -45,11 +45,11 @@ export async function statsCommand(opts: { days?: string }) {
 
   // CLI Commands
   out.push(renderSection("CLI Commands"));
-  out.push(...renderRankedList("CLI", data.cli));
+  out.push(...renderRankedList(data.cli));
 
   // MCP Tools
   out.push(renderSection("MCP Tools"));
-  out.push(...renderRankedList("MCP", data.mcp));
+  out.push(...renderRankedList(data.mcp));
 
   // S.E.A.M Cycle
   out.push(renderSection("S.E.A.M Cycle"));
@@ -88,7 +88,7 @@ export async function statsCommand(opts: { days?: string }) {
   // Validators
   if (Object.keys(data.validator).length > 0) {
     out.push(renderSection("Validator Triggers"));
-    out.push(...renderRankedList("Validator", data.validator));
+    out.push(...renderRankedList(data.validator));
   }
 
   // Dead features warning

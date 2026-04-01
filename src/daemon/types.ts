@@ -67,6 +67,7 @@ export interface DaemonContext {
   antibodyIds: { all: () => { id: string }[] };
   countAntibodies: { get: () => { cnt: number } };
   getDailyAll: { all: () => { date: string; requests: number; original_chars: number; hologram_chars: number }[] };
+  insertTelemetry: { run: (...args: unknown[]) => void };
 
   // Helper functions
   seam: (phase: string, msg: string) => void;
