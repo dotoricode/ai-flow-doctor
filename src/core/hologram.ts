@@ -7,13 +7,125 @@ export interface HologramResult {
   savings: number; // percentage 0-100
 }
 
-export function generateHologram(filePath: string, source: string): HologramResult {
+export interface HologramOptions {
+  contextFile?: string;
+}
+
+/**
+ * Extract import symbols from a context file using regex fast-path.
+ * Returns a Set of imported symbol names, or "all" if namespace import is detected.
+ */
+function extractImportedSymbols(contextSource: string, targetPath: string): Set<string> | "all" {
+  const symbols = new Set<string>();
+  // Normalize target path for matching (strip extension, handle relative paths)
+  const targetBase = targetPath.replace(/\.[tj]sx?$/, "").replace(/\\/g, "/");
+  const targetName = targetBase.split("/").pop() ?? targetBase;
+
+  function matchesTarget(from: string): boolean {
+    const normalized = from.replace(/\.[tj]sx?$/, "").replace(/\\/g, "/");
+    return normalized.endsWith(targetName) || normalized.endsWith(targetBase);
+  }
+
+  // Namespace import: import * as X from "./target" → return full hologram
+  const nsRe = /import\s+\*\s+as\s+\w+\s+from\s+["']([^"']+)["']/g;
+  for (const m of contextSource.matchAll(nsRe)) {
+    if (matchesTarget(m[1])) return "all";
+  }
+
+  // Named imports: import { A, B as C } from "./target"
+  const namedRe = /import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["']/g;
+  for (const m of contextSource.matchAll(namedRe)) {
+    if (matchesTarget(m[2])) {
+      m[1].split(",").forEach(s => {
+        const name = s.trim().split(/\s+as\s+/)[0].trim();
+        if (name) symbols.add(name);
+      });
+    }
+  }
+
+  // Default import: import X from "./target"
+  const defaultRe = /import\s+(\w+)\s+from\s+["']([^"']+)["']/g;
+  for (const m of contextSource.matchAll(defaultRe)) {
+    if (matchesTarget(m[2])) symbols.add("default");
+  }
+
+  // Combined: import X, { A, B } from "./target"
+  const combinedRe = /import\s+(\w+)\s*,\s*\{([^}]+)\}\s+from\s+["']([^"']+)["']/g;
+  for (const m of contextSource.matchAll(combinedRe)) {
+    if (matchesTarget(m[3])) {
+      symbols.add("default");
+      m[2].split(",").forEach(s => {
+        const name = s.trim().split(/\s+as\s+/)[0].trim();
+        if (name) symbols.add(name);
+      });
+    }
+  }
+
+  return symbols;
+}
+
+/**
+ * Check if a node is exported and get its name for L1 filtering.
+ */
+function getExportedName(node: ts.Node): string | null {
+  const mods = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  const isExported = mods?.some(m => m.kind === ts.SyntaxKind.ExportKeyword);
+  if (!isExported) return null;
+
+  if (ts.isFunctionDeclaration(node)) return node.name?.text ?? null;
+  if (ts.isClassDeclaration(node)) return node.name?.text ?? null;
+  if (ts.isInterfaceDeclaration(node)) return node.name.text;
+  if (ts.isTypeAliasDeclaration(node)) return node.name.text;
+  if (ts.isEnumDeclaration(node)) return node.name.text;
+  if (ts.isVariableStatement(node)) {
+    const decl = node.declarationList.declarations[0];
+    return decl?.name.getText() ?? null;
+  }
+  if (ts.isExportAssignment(node)) return "default";
+  return null;
+}
+
+export function generateHologram(filePath: string, source: string, options?: HologramOptions): HologramResult {
   const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
   const lines: string[] = [];
 
+  // L1 filtering: if contextFile provided, only keep full signatures for imported symbols
+  let importedSymbols: Set<string> | "all" | null = null;
+  if (options?.contextFile) {
+    try {
+      const { readFileSync } = require("fs");
+      const contextSource = readFileSync(options.contextFile, "utf-8");
+      importedSymbols = extractImportedSymbols(contextSource, filePath);
+      // If regex yields zero results, fall back to L0
+      if (importedSymbols !== "all" && importedSymbols.size === 0) importedSymbols = null;
+    } catch {
+      // contextFile unreadable — fall back to L0 silently
+      importedSymbols = null;
+    }
+  }
+
   for (const stmt of sf.statements) {
+    // L1: check if this exported symbol is imported by contextFile
+    if (importedSymbols && importedSymbols !== "all") {
+      const exportedName = getExportedName(stmt);
+      if (exportedName !== null && !importedSymbols.has(exportedName)) {
+        // Not imported — emit name-only stub
+        const line = extractNode(stmt, source);
+        if (line) {
+          const stub = line.split("\n")[0].replace(/\{[^}]*\}?\s*$/, "").trimEnd();
+          lines.push(`${stub} // details omitted — read directly if needed`);
+        }
+        continue;
+      }
+    }
+
     const line = extractNode(stmt, source);
     if (line) lines.push(line);
+  }
+
+  // Add L1 guide text if filtering was active
+  if (importedSymbols && importedSymbols !== "all") {
+    lines.push("\n// [afd L1] Non-imported exports are shown as stubs. Use afd_read for full details.");
   }
 
   const hologram = lines.join("\n");

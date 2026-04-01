@@ -82,8 +82,14 @@ function render(data) {
     })
       .then(r => r.json())
       .then(d => {
-        let afd = `🛡️ afd: ${d.status}`;
-        if (d.healed_count > 0) afd += ` 🩹${d.healed_count}`;
+        let afd = '';
+        if (d.total_defenses > 0 && d.defense_reasons && d.defense_reasons.length > 0) {
+          afd = `🛡️ [afd] ${d.total_defenses}건 방어 (${d.defense_reasons.join(', ')})`;
+        } else if (d.healed_count > 0) {
+          afd = `🛡️ [afd] ${d.healed_count}건 방어`;
+        } else {
+          afd = `🛡️ afd: ON`;
+        }
         parts.push(afd);
         finish();
       })

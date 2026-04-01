@@ -5,8 +5,9 @@ import { resolve } from "path";
  * Throws if absPath is not under wsRoot.
  */
 export function assertInsideWorkspace(absPath: string, wsRoot: string): void {
-  const root = resolve(wsRoot);
-  if (!absPath.startsWith(root + "/") && absPath !== root) {
+  const normalizedPath = absPath.replace(/\\/g, "/").toLowerCase();
+  const normalizedRoot = resolve(wsRoot).replace(/\\/g, "/").toLowerCase();
+  if (!normalizedPath.startsWith(normalizedRoot + "/") && normalizedPath !== normalizedRoot) {
     throw new Error("Access denied: path outside workspace");
   }
 }

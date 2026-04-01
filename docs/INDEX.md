@@ -9,6 +9,7 @@
 | `spec/` | What the system **is** — architecture, CLI, MCP protocol | Updated in-place |
 | `adr/` | Why we made key decisions (Architecture Decision Records) | Append-only |
 | `release/` | Per-version audits, bugs, post-mortems | Append-only |
+| `ideas/` | Pre-ADR idea pool — draft → review → accept/reject | Living (채택 시 ADR 승격) |
 | `i18n/` | Translations (mirrors parent structure) | Follows source |
 
 ## File Map
@@ -29,6 +30,11 @@
 ### bug-report/ — Bug Audit Reports
 - [AUDIT-GUIDE.md](bug-report/AUDIT-GUIDE.md) — Audit process, severity criteria, tag system
 - [2026-04-01-full-audit.md](bug-report/2026-04-01-full-audit.md) — Full codebase audit: 67 findings (5 critical, 15 high, 28 medium, 19 low)
+
+### ideas/ — Idea Pool (Pre-ADR)
+- [README.md](ideas/README.md) — 카테고리 구조, 상태 라벨, 워크플로우
+- [scoring/s-rank-immune-maturity.md](ideas/scoring/s-rank-immune-maturity.md) — S 랭크: 면역 성숙도 기반 최고 등급 설계
+- [scoring/feature-usage-telemetry.md](ideas/scoring/feature-usage-telemetry.md) — 기능별 사용 빈도 측정 (개발자용 로컬 텔레메트리)
 
 ### Root
 - [roadmap.md](roadmap.md) — Living roadmap: v1.0~v1.3 released, future phases

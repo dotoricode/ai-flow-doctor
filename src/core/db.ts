@@ -65,6 +65,38 @@ export function initDb(): Database {
   // Purge entries older than 7 days
   db.exec(`DELETE FROM hologram_daily WHERE date < date('now', '-7 days')`);
 
+  // ── Telemetry: feature usage tracking ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS telemetry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT,
+      duration_ms REAL,
+      timestamp INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_telemetry_cat_ts ON telemetry(category, timestamp)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_telemetry_action ON telemetry(action)`);
+  // Purge raw telemetry older than 30 days
+  db.exec(`DELETE FROM telemetry WHERE timestamp < unixepoch() * 1000 - 30 * 86400000`);
+
+  // ── Mistake History: passive defense tracking ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mistake_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      mistake_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      antibody_id TEXT,
+      timestamp INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_path ON mistake_history(file_path)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_ts ON mistake_history(timestamp)`);
+  // Purge entries older than 30 days (consistent with telemetry pattern)
+  db.exec(`DELETE FROM mistake_history WHERE timestamp < unixepoch() * 1000 - 30 * 86400000`);
+
   // Migration: move data from old hologram_stats table if it exists
   try {
     const old = db.prepare("SELECT total_requests, total_original_chars, total_hologram_chars FROM hologram_stats WHERE id = 1").get() as {

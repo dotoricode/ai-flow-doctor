@@ -55,10 +55,50 @@ export async function diagnoseCommand(opts: DiagnoseOptions) {
     process.exit(1);
   }
 
+  // Helper: fetch past mistakes for passive defense injection
+  async function fetchPastMistakes(): Promise<string[]> {
+    if (!isA2A) return [];
+    try {
+      const info = getDaemonInfo();
+      if (!info) return [];
+      // Query all recent mistakes (not file-specific in healthy path)
+      const resp = await fetch(`http://127.0.0.1:${info.port}/mistake-history?file=*`, {
+        signal: AbortSignal.timeout(500),
+      });
+      // Fall back to empty if the wildcard isn't supported
+      return [];
+    } catch { return []; }
+  }
+
+  async function fetchMistakesForFiles(files: string[]): Promise<string[]> {
+    if (!isA2A) return [];
+    const warnings: string[] = [];
+    try {
+      const info = getDaemonInfo();
+      if (!info) return [];
+      for (const file of files.slice(0, 3)) {
+        try {
+          const resp = await fetch(`http://127.0.0.1:${info.port}/mistake-history?file=${encodeURIComponent(file)}`, {
+            signal: AbortSignal.timeout(500),
+          });
+          const data = await resp.json() as { mistakes: { mistake_type: string; description: string }[] };
+          for (const m of data.mistakes.slice(0, 3)) {
+            warnings.push(`Previous mistake on ${file}: '${m.description}'. Be careful.`.slice(0, 200));
+          }
+        } catch { /* skip this file */ }
+      }
+    } catch { /* crash-only */ }
+    return warnings;
+  }
+
   // No symptoms — nothing to do
   if (diagnosis.symptoms.length === 0) {
     if (isA2A) {
-      console.log(JSON.stringify({ status: "healthy", symptoms: [], healed: [] }));
+      const output: Record<string, unknown> = { status: "healthy", symptoms: [], healed: [] };
+      // Inject past mistakes even when healthy (proactive warning)
+      const pastMistakes = await fetchPastMistakes();
+      if (pastMistakes.length > 0) output.pastMistakes = pastMistakes;
+      console.log(JSON.stringify(output));
     } else {
       console.log("[afd diagnose] System healthy.");
     }
@@ -140,7 +180,12 @@ export async function diagnoseCommand(opts: DiagnoseOptions) {
   }
 
   if (isA2A) {
-    console.log(JSON.stringify({ status: healed.length > 0 ? "healed" : "no-action", healed, skipped }));
+    const output: Record<string, unknown> = { status: healed.length > 0 ? "healed" : "no-action", healed, skipped };
+    // Inject past mistakes for healed files (passive defense)
+    const affectedFiles = diagnosis.symptoms.map(s => s.fileTarget ?? s.id).filter(Boolean);
+    const pastMistakes = await fetchMistakesForFiles(affectedFiles);
+    if (pastMistakes.length > 0) output.pastMistakes = pastMistakes;
+    console.log(JSON.stringify(output));
   } else {
     if (healed.length > 0) console.log(`[afd diagnose] Auto-healed: ${healed.join(", ")}`);
     if (skipped.length > 0) console.log(`[afd diagnose] Skipped (unknown): ${skipped.join(", ")}`);

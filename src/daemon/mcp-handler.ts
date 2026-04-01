@@ -31,11 +31,12 @@ const mcpToolDefs = [
   },
   {
     name: "afd_hologram",
-    description: "Generate a token-efficient hologram (type skeleton) for a TypeScript file.",
+    description: "Generate a token-efficient hologram (type skeleton) for a TypeScript file. Use contextFile for L1 filtering: only symbols imported by the context file get full signatures; others become stubs.",
     inputSchema: {
       type: "object" as const,
       properties: {
         file: { type: "string" as const, description: "Relative or absolute file path" },
+        contextFile: { type: "string" as const, description: "Optional: the file that imports from 'file'. Enables L1 filtering for higher compression." },
       },
       required: ["file"],
     },
@@ -111,6 +112,11 @@ function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: stri
     const toolName = params?.name as string | undefined;
     const args = (params?.arguments ?? {}) as Record<string, unknown>;
 
+    // Track MCP tool call
+    if (toolName) {
+      try { ctx.insertTelemetry.run("mcp", toolName, null, null, Date.now()); } catch { /* crash-only */ }
+    }
+
     if (toolName === "afd_diagnose") {
       const raw = args.raw === true;
       const known = ctx.antibodyIds.all().map(r => r.id);
@@ -166,7 +172,8 @@ function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: stri
         const absPath = resolve(file);
         _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
-        const result = generateHologram(file, source);
+        const contextFile = args.contextFile as string | undefined;
+        const result = generateHologram(file, source, contextFile ? { contextFile: resolve(contextFile) } : undefined);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
         mcpResponse(id, {
           content: [{ type: "text", text: result.hologram, cache_control: { type: "ephemeral" } }],

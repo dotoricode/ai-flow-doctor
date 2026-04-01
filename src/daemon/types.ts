@@ -25,6 +25,12 @@ export interface HologramStats {
   totalHologramChars: number;
 }
 
+export interface MistakeEntry {
+  mistake_type: string;
+  description: string;
+  timestamp: number;
+}
+
 export interface DaemonState {
   startedAt: number;
   filesDetected: number;
@@ -43,6 +49,7 @@ export interface DaemonState {
   fileSnapshots: LruStringMap;
   sseClients: Set<ReadableStreamDefaultController<Uint8Array>>;
   customValidators: Map<string, ValidatorFn>;
+  mistakeCache: Map<string, MistakeEntry[]>;
 }
 
 export interface DaemonOptions {
@@ -68,6 +75,9 @@ export interface DaemonContext {
   countAntibodies: { get: () => { cnt: number } };
   getDailyAll: { all: () => { date: string; requests: number; original_chars: number; hologram_chars: number }[] };
   insertTelemetry: { run: (...args: unknown[]) => void };
+  insertMistakeHistory: { run: (...args: unknown[]) => void };
+  queryMistakesByFile: { all: (...args: unknown[]) => MistakeEntry[] };
+  deleteMistakeOverflow: { run: (...args: unknown[]) => void };
 
   // Helper functions
   seam: (phase: string, msg: string) => void;

@@ -26,7 +26,28 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       const last = ctx.state.autoHealLog.length > 0
         ? ctx.state.autoHealLog[ctx.state.autoHealLog.length - 1].id
         : null;
-      return Response.json({ status: "ON", healed_count: ctx.state.autoHealCount, last_healed: last });
+      // Defense reasons from in-memory mistakeCache (not DB query — stays under 200ms)
+      const reasonSet = new Set<string>();
+      for (const entries of ctx.state.mistakeCache.values()) {
+        for (const e of entries) {
+          reasonSet.add(e.mistake_type);
+          if (reasonSet.size >= 3) break;
+        }
+        if (reasonSet.size >= 3) break;
+      }
+      return Response.json({
+        status: "ON",
+        healed_count: ctx.state.autoHealCount,
+        last_healed: last,
+        total_defenses: ctx.state.autoHealCount,
+        defense_reasons: [...reasonSet],
+      });
+    }
+
+    // Track HTTP API calls as telemetry
+    const _apiPath = url.pathname.replace(/^\//, "");
+    if (["/hologram", "/read", "/diagnose", "/score", "/evolution", "/sync"].includes(url.pathname)) {
+      try { ctx.insertTelemetry.run("mcp", `http_${_apiPath}`, null, null, Date.now()); } catch { /* crash-only */ }
     }
 
     if (url.pathname === "/hologram") {
@@ -36,7 +57,8 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         const absPath = resolve(file);
         _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
-        const result = generateHologram(file, source);
+        const contextFile = url.searchParams.get("contextFile");
+        const result = generateHologram(file, source, contextFile ? { contextFile: resolve(contextFile) } : undefined);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
         return Response.json(result);
       } catch (err: unknown) {
@@ -74,6 +96,14 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       } catch (err: unknown) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 404 });
       }
+    }
+
+    if (url.pathname === "/mistake-history") {
+      const file = url.searchParams.get("file");
+      if (!file) return Response.json({ error: "?file= required" }, { status: 400 });
+      const normalizedFile = file.replace(/\\/g, "/");
+      const cached = ctx.state.mistakeCache.get(normalizedFile);
+      return Response.json({ mistakes: cached ?? [] });
     }
 
     if (url.pathname === "/diagnose") {
@@ -118,6 +148,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         ctx.state.autoHealCount++;
         ctx.state.autoHealLog.push({ id: body.id, at: Date.now() });
         if (ctx.state.autoHealLog.length > 100) ctx.state.autoHealLog.shift();
+        try { ctx.insertTelemetry.run("immune", "heal_hit", JSON.stringify({ antibodyId: body.id }), null, Date.now()); } catch { /* crash-only */ }
         return Response.json({ status: "recorded", total: ctx.state.autoHealCount });
       } catch (err: unknown) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
@@ -234,6 +265,19 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       return new Response(stream, {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
       });
+    }
+
+    if (url.pathname === "/telemetry") {
+      const days = parseInt(url.searchParams.get("days") ?? "7", 10) || 7;
+      const since = Date.now() - days * 86_400_000;
+      try {
+        const rows = ctx.db.prepare(
+          "SELECT category, action, COUNT(*) as cnt, AVG(duration_ms) as avg_ms FROM telemetry WHERE timestamp >= ? GROUP BY category, action ORDER BY cnt DESC"
+        ).all(since) as { category: string; action: string; cnt: number; avg_ms: number | null }[];
+        return Response.json({ days, rows });
+      } catch {
+        return Response.json({ days, rows: [] });
+      }
     }
 
     if (url.pathname === "/stop") {

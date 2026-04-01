@@ -50,6 +50,7 @@ const state: DaemonState = {
   fileSnapshots: new LruStringMap(10 * 1024 * 1024),
   sseClients: new Set(),
   customValidators: new Map(),
+  mistakeCache: new Map(),
 };
 
 const _ws = resolveWorkspacePaths();
@@ -137,6 +138,43 @@ export function main(options: DaemonOptions = {}) {
   function trackEvent(category: string, action: string, detail?: string, durationMs?: number) {
     try { insertTelemetry.run(category, action, detail ?? null, durationMs ?? null, Date.now()); } catch { /* crash-only */ }
   }
+
+  // ── Mistake History (Passive Defense) ──
+  const insertMistakeHistory = db.prepare(
+    "INSERT INTO mistake_history (file_path, mistake_type, description, antibody_id, timestamp) VALUES (?, ?, ?, ?, ?)"
+  );
+  const queryMistakesByFile = db.prepare(
+    "SELECT mistake_type, description, timestamp FROM mistake_history WHERE file_path = ? ORDER BY timestamp DESC LIMIT 5"
+  );
+  const deleteMistakeOverflow = db.prepare(
+    "DELETE FROM mistake_history WHERE file_path = ? AND id NOT IN (SELECT id FROM mistake_history WHERE file_path = ? ORDER BY timestamp DESC LIMIT 5)"
+  );
+
+  function recordMistake(filePath: string, mistakeType: string, description: string, antibodyId?: string) {
+    try {
+      const normalizedPath = filePath.replace(/\\/g, "/");
+      const truncatedDesc = description.slice(0, 200);
+      insertMistakeHistory.run(normalizedPath, mistakeType, truncatedDesc, antibodyId ?? null, Date.now());
+      deleteMistakeOverflow.run(normalizedPath, normalizedPath);
+      // Update write-through cache
+      const cached = state.mistakeCache.get(normalizedPath) ?? [];
+      cached.unshift({ mistake_type: mistakeType, description: truncatedDesc, timestamp: Date.now() });
+      if (cached.length > 5) cached.length = 5;
+      state.mistakeCache.set(normalizedPath, cached);
+    } catch { /* crash-only */ }
+  }
+
+  // Load mistake cache from DB on startup (write-through cache)
+  try {
+    const allMistakes = db.prepare("SELECT file_path, mistake_type, description, timestamp FROM mistake_history ORDER BY timestamp DESC").all() as { file_path: string; mistake_type: string; description: string; timestamp: number }[];
+    for (const row of allMistakes) {
+      const cached = state.mistakeCache.get(row.file_path) ?? [];
+      if (cached.length < 5) {
+        cached.push({ mistake_type: row.mistake_type, description: row.description, timestamp: row.timestamp });
+        state.mistakeCache.set(row.file_path, cached);
+      }
+    }
+  } catch { /* crash-only — empty cache is fine */ }
 
   function today(): string { return new Date().toISOString().slice(0, 10); }
 
@@ -310,6 +348,7 @@ export function main(options: DaemonOptions = {}) {
       state.totalFileBytesSaved += bytesWritten;
       state.autoHealLog.push({ id: antibodyId, at: Date.now() });
       trackEvent("immune", "heal_hit", JSON.stringify({ antibodyId, fileTarget, bytesWritten, healMs }));
+      recordMistake(fileTarget, "file-deleted", `File deleted and restored via antibody ${antibodyId}`, antibodyId);
       if (state.autoHealLog.length > 100) state.autoHealLog.shift();
       const metrics = calcHealMetrics(bytesWritten, healMs);
       const boast = maybeHealBoast(5);
@@ -453,6 +492,7 @@ export function main(options: DaemonOptions = {}) {
             setTimeout(() => selfWrites.delete(path), SELF_WRITE_DEBOUNCE_MS);
             writeFileSync(resolve(path), oldContent, "utf-8");
             trackEvent("immune", "heal_hit", JSON.stringify({ filePath: path, abId }));
+            recordMistake(path, "corruption", `Silent corruption detected (${oldContent.length} → ${newSize} bytes) — restored`, abId);
             seam("Mutate", `Silent corruption detected in ${path} (${oldContent.length} → ${newSize} bytes) — restored from snapshot`);
             seam("Extract", `💡 Tip: Use the MCP tool 'afd_hologram' on ${path} to safely inspect the file's structure before attempting another edit.`);
           }
@@ -488,6 +528,9 @@ export function main(options: DaemonOptions = {}) {
     countAntibodies: countAntibodies as unknown as DaemonContext["countAntibodies"],
     getDailyAll: getDailyAll as unknown as DaemonContext["getDailyAll"],
     insertTelemetry: insertTelemetry as unknown as DaemonContext["insertTelemetry"],
+    insertMistakeHistory: insertMistakeHistory as unknown as DaemonContext["insertMistakeHistory"],
+    queryMistakesByFile: queryMistakesByFile as unknown as DaemonContext["queryMistakesByFile"],
+    deleteMistakeOverflow: deleteMistakeOverflow as unknown as DaemonContext["deleteMistakeOverflow"],
     seam, persistHologramStats, safeHologram,
     getWorkspaceMap: wsMap.get, today, discoveryTargets: discovery.targets,
     port: 0,
