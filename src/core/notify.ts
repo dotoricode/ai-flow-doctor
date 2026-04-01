@@ -39,6 +39,7 @@ function escapeAS(s: string): string {
 function safeSpawn(cmd: string, args: string[], opts: Record<string, unknown> = {}): void {
   try {
     const child = spawn(cmd, args, { detached: true, stdio: "ignore", ...opts });
+    child.on("error", () => {}); // Swallow async ENOENT when binary is missing
     child.unref();
   } catch {
     // Binary not found or spawn failed — silently ignore
