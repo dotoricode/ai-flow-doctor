@@ -94,7 +94,6 @@ export function initDb(): Database {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_path ON mistake_history(file_path)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_ts ON mistake_history(timestamp)`);
-  // Purge entries older than 30 days (consistent with telemetry pattern)
   db.exec(`DELETE FROM mistake_history WHERE timestamp < unixepoch() * 1000 - 30 * 86400000`);
 
   // Migration: move data from old hologram_stats table if it exists
@@ -103,10 +102,12 @@ export function initDb(): Database {
       total_requests: number; total_original_chars: number; total_hologram_chars: number;
     } | null;
     if (old && old.total_requests > 0) {
-      db.prepare(
-        "UPDATE hologram_lifetime SET total_requests = ?, total_original_chars = ?, total_hologram_chars = ? WHERE id = 1"
-      ).run(old.total_requests, old.total_original_chars, old.total_hologram_chars);
-      db.exec("DROP TABLE hologram_stats");
+      db.transaction(() => {
+        db.prepare(
+          "UPDATE hologram_lifetime SET total_requests = ?, total_original_chars = ?, total_hologram_chars = ? WHERE id = 1"
+        ).run(old.total_requests, old.total_original_chars, old.total_hologram_chars);
+        db.exec("DROP TABLE hologram_stats");
+      })();
     }
   } catch {
     // Old table doesn't exist — clean install
