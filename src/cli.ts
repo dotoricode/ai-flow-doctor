@@ -17,6 +17,8 @@ import { mcpCommand } from "./commands/mcp";
 import { statsCommand } from "./commands/stats";
 import { hooksCommand } from "./commands/hooks";
 import { benchmarkCommand } from "./commands/benchmark";
+import { suggestCommand } from "./commands/suggest";
+import { correlateCommand } from "./commands/correlate";
 import { APP_VERSION } from "./version";
 import { trackCliCommand } from "./core/telemetry";
 
@@ -68,7 +70,7 @@ program
   .description("Synchronize AI agent configs across team")
   .option("--push", "Push local antibodies to team vaccine store")
   .option("--pull", "Pull antibodies from team vaccine store")
-  .option("--remote <url>", "Remote vaccine store URL (future)")
+  .option("--remote <url>", "Remote vaccine store URL for push/pull")
   .action(syncCommand);
 
 program
@@ -92,7 +94,25 @@ program
 program
   .command("evolution")
   .description("Self-Evolution: analyze quarantined failures and generate lessons for AI agents")
+  .option("--generate", "Auto-generate validators from all quarantine patterns")
   .action(evolutionCommand);
+
+program
+  .command("suggest")
+  .description("Suggest validators based on recurring failure patterns in mistake history")
+  .option("--days <n>", "Analysis window in days", "30")
+  .option("--min <n>", "Minimum frequency threshold", "3")
+  .option("--apply", "Auto-generate validators for uncovered patterns")
+  .option("--cross", "Annotate suggestions matching cross-project hotspots as Community Verified")
+  .action(suggestCommand);
+
+program
+  .command("correlate")
+  .description("Cross-project pattern correlation — surface Global Hotspot patterns across federated scopes")
+  .option("--min-scopes <n>", "Minimum distinct scopes to qualify as a global hotspot", "2")
+  .option("--apply", "Auto-generate global validators for uncovered hotspots")
+  .option("--include-local", "Include local-scope antibodies in the analysis")
+  .action(correlateCommand);
 
 program
   .command("mcp [subcommand]")

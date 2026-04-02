@@ -17,4 +17,6 @@ nul/
 .omc/state/
 be_resizing-demo.gif
 demo-before.gif
-a.txt
+test/.tmp-*.sqlite
+test/.tmp-*.sqlite-shm
+test/.tmp-*.sqlite-wal

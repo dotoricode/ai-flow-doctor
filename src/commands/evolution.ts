@@ -6,6 +6,8 @@
  */
 
 import { evolve, analyzeQuarantine, listQuarantine } from "../core/evolution";
+import { generateValidators } from "../core/validator-generator";
+import type { ValidatorGenInput } from "../core/validator-generator";
 import { getSystemLanguage } from "../core/locale";
 
 const msgs = {
@@ -21,6 +23,10 @@ const msgs = {
     learned: "Learned",
     pending: "Pending",
     lessonDetail: "New Lessons",
+    genTitle: "Auto-Validator Generation",
+    genWritten: (n: number) => `${n} validator(s) generated in .afd/validators/`,
+    genSkipped: (n: number, reason: string) => `${n} skipped (${reason})`,
+    genNone: "No pending patterns to generate validators from.",
   },
   ko: {
     title: "afd 자가 진화 리포트",
@@ -34,6 +40,10 @@ const msgs = {
     learned: "학습 완료",
     pending: "대기 중",
     lessonDetail: "새로운 교훈",
+    genTitle: "자동 검증기 생성",
+    genWritten: (n: number) => `${n}개의 검증기가 .afd/validators/에 생성되었습니다`,
+    genSkipped: (n: number, reason: string) => `${n}개 건너뜀 (${reason})`,
+    genNone: "검증기를 생성할 대기 중인 패턴이 없습니다.",
   },
 };
 
@@ -57,7 +67,7 @@ function visualWidth(s: string): number {
   return w;
 }
 
-export async function evolutionCommand() {
+export async function evolutionCommand(opts: { generate?: boolean } = {}) {
   const lang = getSystemLanguage();
   const m = msgs[lang];
 
@@ -68,6 +78,62 @@ export async function evolutionCommand() {
   }
 
   const stats = analyzeQuarantine();
+
+  // --generate: produce validators from ALL quarantine patterns (not just pending)
+  if (opts.generate) {
+    const allStats = analyzeQuarantine();
+    // Also include already-learned entries for validator generation
+    const allEntries = listQuarantine();
+    const inputs: ValidatorGenInput[] = allEntries.map(entry => {
+      const lesson = allStats.lessons.find(l => l.entry.quarantinePath === entry.quarantinePath);
+      if (lesson) {
+        return {
+          failureType: lesson.failureType,
+          originalPath: lesson.entry.originalPath,
+          corruptedContent: lesson.corruptedContent,
+          restoredContent: lesson.restoredContent,
+        };
+      }
+      // For already-learned entries, read quarantine file directly
+      const { readFileSync, existsSync } = require("fs");
+      const corruptedContent = readFileSync(entry.quarantinePath, "utf-8") as string;
+      const failureType = corruptedContent.trim() === "DELETED" ? "deletion" as const : "corruption" as const;
+      const restoredContent = existsSync(entry.originalPath)
+        ? readFileSync(entry.originalPath, "utf-8") as string
+        : null;
+      return { failureType, originalPath: entry.originalPath, corruptedContent, restoredContent };
+    });
+
+    if (inputs.length === 0) {
+      console.log(m.genNone);
+      return;
+    }
+
+    const results = generateValidators(inputs);
+    const written = results.filter(r => r.written);
+    const skipped = results.filter(r => !r.written);
+
+    console.log("");
+    console.log(hline(BOX.tl, BOX.tr));
+    console.log(row(`🧬 ${m.genTitle}`));
+    console.log(hline(BOX.ml, BOX.mr));
+
+    for (const r of written) {
+      console.log(row(`  ✅ ${r.filename}`));
+    }
+    for (const r of skipped) {
+      console.log(row(`  ⏭️  ${r.filename} (${r.reason})`));
+    }
+
+    console.log(hline(BOX.ml, BOX.mr));
+    console.log(row(m.genWritten(written.length)));
+    if (skipped.length > 0) {
+      console.log(row(m.genSkipped(skipped.length, "user-modified")));
+    }
+    console.log(hline(BOX.bl, BOX.br));
+    return;
+  }
+
   if (stats.pending === 0) {
     console.log(m.noPending);
     return;
@@ -75,6 +141,16 @@ export async function evolutionCommand() {
 
   console.log(m.analyzing);
   const result = evolve();
+
+  // Auto-generate validators for newly learned patterns
+  const genInputs: ValidatorGenInput[] = stats.lessons.map(lesson => ({
+    failureType: lesson.failureType,
+    originalPath: lesson.entry.originalPath,
+    corruptedContent: lesson.corruptedContent,
+    restoredContent: lesson.restoredContent,
+  }));
+  const genResults = generateValidators(genInputs);
+  const genWritten = genResults.filter(r => r.written);
 
   console.log("");
   console.log(hline(BOX.tl, BOX.tr));
@@ -103,5 +179,12 @@ export async function evolutionCommand() {
   console.log(hline(BOX.ml, BOX.mr));
   console.log(row(m.written(result.lessonsWritten)));
   console.log(row(m.total(result.totalLessons)));
+  if (genWritten.length > 0) {
+    console.log(hline(BOX.ml, BOX.mr));
+    console.log(row(`🧬 ${m.genWritten(genWritten.length)}`));
+    for (const r of genWritten) {
+      console.log(row(`  ✅ ${r.filename}`));
+    }
+  }
   console.log(hline(BOX.bl, BOX.br));
 }

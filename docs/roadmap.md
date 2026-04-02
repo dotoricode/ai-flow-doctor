@@ -180,17 +180,17 @@
 
 ## Future
 
-### v1.7.0 — Collective Intelligence
+### v1.7.0 — Collective Intelligence ✅ Released 2026-04-03
 
 #### Team Antibody Federation
-- [ ] Remote vaccine store (`afd sync --remote <url>`)
-- [ ] Team antibody federation — share learned patterns across repos
-- [ ] Antibody versioning and conflict resolution
+- [x] Remote vaccine store (`afd sync --remote <url>`)
+- [x] Team antibody federation — share learned patterns across repos
+- [x] Antibody versioning and conflict resolution
 
 #### Advanced Evolution
-- [ ] Auto-validator generation from quarantine patterns
-- [ ] Rule suggestion engine based on failure history
-- [ ] Cross-project pattern correlation
+- [x] Auto-validator generation from quarantine patterns
+- [x] Rule suggestion engine based on failure history
+- [x] Cross-project pattern correlation (`afd correlate`, `afd suggest --cross`)
 
 ### Future Phases
 

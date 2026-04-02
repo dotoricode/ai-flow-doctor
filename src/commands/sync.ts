@@ -3,6 +3,8 @@ import { resolve, join } from "path";
 import { daemonRequest } from "../daemon/client";
 import { AFD_DIR } from "../constants";
 import { getSystemLanguage } from "../core/locale";
+import { resolveScope } from "../core/federation";
+import type { FederatedAntibody, FederatedPayload } from "../core/federation";
 
 interface SyncResponse {
   status: string;
@@ -10,21 +12,9 @@ interface SyncResponse {
   count: number;
 }
 
-interface VaccinePayload {
-  version: string;
-  generatedAt: string;
-  ecosystem: string;
-  antibodyCount: number;
-  antibodies: VaccineAntibody[];
-}
-
-interface VaccineAntibody {
-  id: string;
-  patternType: string;
-  fileTarget: string;
-  patches: { op: string; path: string; value?: string }[];
-  learnedAt: string;
-}
+// Re-export federated types under legacy names for local push/pull compatibility
+type VaccinePayload = FederatedPayload;
+type VaccineAntibody = FederatedAntibody;
 
 interface SyncOptions {
   push?: boolean;
@@ -53,6 +43,17 @@ const msgs = {
     pullHint: "Run `afd sync --push` first to create the shared store.",
     learnedVia: "Learned via pull",
     ready: "antibody(ies) ready for global federation.",
+    // Remote
+    remotePushTitle: "afd sync --push --remote",
+    remotePushSuccess: "Pushed to remote vaccine store",
+    remotePullTitle: "afd sync --pull --remote",
+    remotePullSuccess: "Pulled from remote vaccine store",
+    remoteSyncTitle: "afd sync --remote (bidirectional)",
+    remoteInvalidUrl: "Invalid URL. Must start with http:// or https://",
+    remoteTimeout: "Request timed out (10s)",
+    remoteNetworkError: "Network error",
+    remoteInvalidResponse: "Invalid response payload from remote",
+    remoteStatusError: "Remote returned error status",
   },
   ko: {
     title: "afd sync — 백신 네트워크",
@@ -74,6 +75,17 @@ const msgs = {
     pullHint: "`afd sync --push`를 먼저 실행하여 공유 저장소를 생성하세요.",
     learnedVia: "풀로 학습됨",
     ready: "개 항체가 글로벌 페더레이션 준비 완료.",
+    // 원격
+    remotePushTitle: "afd sync --push --remote",
+    remotePushSuccess: "원격 백신 저장소에 푸시 완료",
+    remotePullTitle: "afd sync --pull --remote",
+    remotePullSuccess: "원격 백신 저장소에서 풀 완료",
+    remoteSyncTitle: "afd sync --remote (양방향 동기화)",
+    remoteInvalidUrl: "올바르지 않은 URL입니다. http:// 또는 https://로 시작해야 합니다.",
+    remoteTimeout: "요청 시간 초과 (10초)",
+    remoteNetworkError: "네트워크 오류",
+    remoteInvalidResponse: "원격 서버의 응답 페이로드가 올바르지 않습니다.",
+    remoteStatusError: "원격 서버가 오류 상태를 반환했습니다.",
   },
 };
 
@@ -83,6 +95,22 @@ const TEAM_PAYLOAD_FILE = join(TEAM_STORE_DIR, "shared-vaccine-payload.json");
 export async function syncCommand(opts: SyncOptions = {}) {
   const lang = getSystemLanguage();
   const m = msgs[lang];
+
+  if (opts.remote) {
+    const url = validateRemoteUrl(opts.remote, m);
+    if (!url) return;
+
+    if (opts.push && !opts.pull) {
+      await syncRemotePush(url, m);
+    } else if (opts.pull && !opts.push) {
+      await syncRemotePull(url, m);
+    } else {
+      // --remote alone (or both flags): bidirectional — pull first, then push
+      await syncRemotePull(url, m);
+      await syncRemotePush(url, m);
+    }
+    return;
+  }
 
   if (opts.push) {
     await syncPush(m);
@@ -96,6 +124,179 @@ export async function syncCommand(opts: SyncOptions = {}) {
 
   // Default: export local payload (original behavior)
   await syncExport(m);
+}
+
+// ─── Remote helpers ───────────────────────────────────────────────────────────
+
+const REMOTE_TIMEOUT_MS = 10_000;
+
+function validateRemoteUrl(raw: string, m: typeof msgs.en): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
+    return u.toString();
+  } catch {
+    console.error(`[afd sync] ${m.remoteInvalidUrl}: ${raw}`);
+    return null;
+  }
+}
+
+async function syncRemotePush(url: string, m: typeof msgs.en) {
+  // 1. Export latest local payload via daemon
+  let result: SyncResponse;
+  try {
+    result = await daemonRequest<SyncResponse>("/sync");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[afd sync] ${msg}`);
+    process.exit(1);
+  }
+
+  if (result.count === 0) {
+    console.log(`[afd sync] ${m.noAntibodies}`);
+    return;
+  }
+
+  const localPayloadPath = resolve(AFD_DIR, "global-vaccine-payload.json");
+  const rawPayload: VaccinePayload = JSON.parse(readFileSync(localPayloadPath, "utf-8"));
+
+  // Stamp publisher scope on all antibodies before sending
+  const publisherScope = resolveScope();
+  const now = new Date().toISOString();
+  const payload: VaccinePayload = {
+    ...rawPayload,
+    version: "1.7",
+    scope: publisherScope,
+    antibodies: rawPayload.antibodies.map(ab => ({
+      ...ab,
+      scope: publisherScope,
+      fqid: `${publisherScope}/${ab.id}`,
+      version: ab.version ?? 1,
+      updatedAt: ab.updatedAt ?? ab.learnedAt ?? now,
+    })),
+  };
+
+  // 2. POST to remote
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "afd-sync/1.7" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
+    });
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.error(`[afd sync] ${isTimeout ? m.remoteTimeout : m.remoteNetworkError}: ${url}`);
+    process.exit(1);
+  }
+
+  if (!res.ok) {
+    console.error(`[afd sync] ${m.remoteStatusError} ${res.status} ${res.statusText}`);
+    process.exit(1);
+  }
+
+  const BOX = { tl: "┌", tr: "┐", bl: "└", br: "┘", h: "─", v: "│", ml: "├", mr: "┤" };
+  const W = 50;
+  const line = (l: string, r: string) => `${l}${BOX.h.repeat(W)}${r}`;
+  const row = (s: string) => `${BOX.v}  ${s}${" ".repeat(Math.max(0, W - 2 - s.length))}${BOX.v}`;
+
+  console.log(line(BOX.tl, BOX.tr));
+  console.log(row(`📤 ${m.remotePushTitle}`));
+  console.log(line(BOX.ml, BOX.mr));
+  console.log(row(`${m.antibodies}: ${payload.antibodyCount}`));
+  console.log(row(`URL: ${url}`));
+  console.log(line(BOX.ml, BOX.mr));
+  console.log(row(`✅ ${m.remotePushSuccess}`));
+  console.log(line(BOX.bl, BOX.br));
+}
+
+async function syncRemotePull(url: string, m: typeof msgs.en) {
+  // 1. GET payload from remote
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: { "Accept": "application/json", "User-Agent": "afd-sync/1.7" },
+      signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
+    });
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.error(`[afd sync] ${isTimeout ? m.remoteTimeout : m.remoteNetworkError}: ${url}`);
+    process.exit(1);
+  }
+
+  if (!res.ok) {
+    console.error(`[afd sync] ${m.remoteStatusError} ${res.status} ${res.statusText}`);
+    process.exit(1);
+  }
+
+  let remotePayload: VaccinePayload;
+  try {
+    const json = await res.json();
+    if (!json || !Array.isArray(json.antibodies)) throw new Error("missing antibodies array");
+    remotePayload = json as VaccinePayload;
+  } catch {
+    console.error(`[afd sync] ${m.remoteInvalidResponse}`);
+    process.exit(1);
+  }
+
+  // 2. Learn each antibody into the running daemon (same as local pull)
+  let newCount = 0;
+  let skippedCount = 0;
+  const results: { id: string; status: string }[] = [];
+
+  for (const ab of remotePayload.antibodies) {
+    try {
+      const learnRes = await fetch(
+        `http://127.0.0.1:${getDaemonPort()}/antibodies/learn`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: ab.id,
+            scope: ab.scope ?? remotePayload.scope ?? "remote",
+            version: ab.version ?? 1,
+            updatedAt: ab.updatedAt ?? ab.learnedAt,
+            patternType: ab.patternType,
+            fileTarget: ab.fileTarget,
+            patches: ab.patches,
+          }),
+          signal: AbortSignal.timeout(2000),
+        }
+      );
+      if (learnRes.ok) {
+        results.push({ id: ab.id, status: m.pullNew });
+        newCount++;
+      } else {
+        results.push({ id: ab.id, status: m.pullSkipped });
+        skippedCount++;
+      }
+    } catch {
+      results.push({ id: ab.id, status: m.pullSkipped });
+      skippedCount++;
+    }
+  }
+
+  const BOX = { tl: "┌", tr: "┐", bl: "└", br: "┘", h: "─", v: "│", ml: "├", mr: "┤" };
+  const W = 50;
+  const line = (l: string, r: string) => `${l}${BOX.h.repeat(W)}${r}`;
+  const row = (s: string) => `${BOX.v}  ${s}${" ".repeat(Math.max(0, W - 2 - s.length))}${BOX.v}`;
+
+  console.log(line(BOX.tl, BOX.tr));
+  console.log(row(`📥 ${m.remotePullTitle}`));
+  console.log(line(BOX.ml, BOX.mr));
+  console.log(row(`URL: ${url}`));
+  console.log(line(BOX.ml, BOX.mr));
+
+  for (const r of results) {
+    const icon = r.status === m.pullNew ? "✅" : "⏭️";
+    console.log(row(`${icon} ${r.id}: ${r.status}`));
+  }
+
+  console.log(line(BOX.ml, BOX.mr));
+  console.log(row(`✅ ${m.remotePullSuccess}: ${newCount} ${m.pullMerged}, ${skippedCount} ${m.pullSkipped}`));
+  console.log(line(BOX.bl, BOX.br));
 }
 
 async function syncExport(m: typeof msgs.en) {

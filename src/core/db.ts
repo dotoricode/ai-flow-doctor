@@ -35,6 +35,11 @@ export function initDb(): Database {
     // Column already exists — safe to ignore
   }
 
+  // Migration: federation columns (v1.7)
+  try { db.exec("ALTER TABLE antibodies ADD COLUMN scope TEXT NOT NULL DEFAULT 'local'"); } catch { /* exists */ }
+  try { db.exec("ALTER TABLE antibodies ADD COLUMN ab_version INTEGER NOT NULL DEFAULT 1"); } catch { /* exists */ }
+  try { db.exec("ALTER TABLE antibodies ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))"); } catch { /* exists */ }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS unlink_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

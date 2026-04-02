@@ -12,6 +12,7 @@ import { analyzeQuarantine, listQuarantine, evolve } from "../core/evolution";
 import { MAX_SSE_CLIENTS } from "./types";
 import type { DaemonContext } from "./types";
 import { assertInsideWorkspace as _assertWs } from "./guards";
+import { remoteWins } from "../core/federation";
 
 /** Create the HTTP fetch handler for Bun.serve */
 export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
@@ -41,6 +42,14 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       const latestDefense = latestLog
         ? { file: latestLog.file, healMs: latestLog.healMs, at: latestLog.at }
         : null;
+      // session_saved_tokens_k: DB의 오늘치 stats 사용
+      // (MCP 프로세스와 HTTP 데몬이 별개 프로세스라 in-memory sessionOriginalChars는 항상 0)
+      const todayStr = ctx.today();
+      const dailyRows = ctx.getDailyAll.all();
+      const todayRow = dailyRows.find(r => r.date === todayStr);
+      const sessionSavedTokensK = todayRow
+        ? Math.round(Math.max(0, todayRow.original_chars - todayRow.hologram_chars) / 4 / 100) / 10
+        : 0;
       return Response.json({
         status: "ON",
         healed_count: ctx.state.autoHealCount,
@@ -49,7 +58,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         defense_reasons: [...reasonSet],
         latest_defense: latestDefense,
         saved_tokens_k: Math.round(Math.max(0, ctx.state.hologramStats.totalOriginalChars - ctx.state.hologramStats.totalHologramChars) / 4 / 100) / 10,
-        session_saved_tokens_k: Math.round(Math.max(0, ctx.state.hologramStats.sessionOriginalChars - ctx.state.hologramStats.sessionHologramChars) / 4 / 100) / 10,
+        session_saved_tokens_k: sessionSavedTokensK,
       });
     }
 
@@ -143,9 +152,36 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
 
     if (url.pathname === "/antibodies/learn" && req.method === "POST") {
       try {
-        const body = await req.json() as { id: string; patternType: string; fileTarget: string; patches: PatchOp[] };
-        ctx.insertAntibody.run(body.id, body.patternType, body.fileTarget, JSON.stringify(body.patches));
-        return Response.json({ status: "learned", id: body.id });
+        const body = await req.json() as {
+          id: string; patternType: string; fileTarget: string; patches: PatchOp[];
+          scope?: string; version?: number; updatedAt?: string;
+        };
+        const scope = body.scope ?? "local";
+        const incomingVersion = body.version ?? 1;
+        const updatedAt = body.updatedAt ?? new Date().toISOString();
+        // Non-local antibodies are stored under their fqid to avoid collisions
+        const storageId = scope === "local" ? body.id : `${scope}/${body.id}`;
+
+        type ExistingRow = { ab_version: number; updated_at: string } | null;
+        const existing = ctx.db.prepare(
+          "SELECT ab_version, updated_at FROM antibodies WHERE id = ?"
+        ).get(storageId) as ExistingRow;
+
+        if (existing) {
+          if (!remoteWins(incomingVersion, updatedAt, existing.ab_version, existing.updated_at)) {
+            return Response.json({ status: "skipped", reason: "local_is_newer_or_equal", id: storageId });
+          }
+          ctx.db.prepare(
+            "UPDATE antibodies SET patch_op = ?, file_target = ?, ab_version = ?, updated_at = ?, scope = ? WHERE id = ?"
+          ).run(JSON.stringify(body.patches), body.fileTarget, incomingVersion, updatedAt, scope, storageId);
+          return Response.json({ status: "updated", id: storageId });
+        }
+
+        ctx.insertAntibody.run(storageId, body.patternType, body.fileTarget, JSON.stringify(body.patches));
+        ctx.db.prepare(
+          "UPDATE antibodies SET scope = ?, ab_version = ?, updated_at = ? WHERE id = ?"
+        ).run(scope, incomingVersion, updatedAt, storageId);
+        return Response.json({ status: "learned", id: storageId });
       } catch (err: unknown) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
       }
@@ -229,7 +265,8 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
     }
 
     if (url.pathname === "/sync") {
-      const rows = ctx.listAntibodies.all() as { id: string; pattern_type: string; file_target: string; patch_op: string; created_at: string }[];
+      type AntibodyRow = { id: string; pattern_type: string; file_target: string; patch_op: string; created_at: string; scope?: string; ab_version?: number; updated_at?: string };
+      const rows = ctx.listAntibodies.all() as AntibodyRow[];
       const sanitized = rows.flatMap(r => {
         let patches: PatchOp[];
         try { patches = JSON.parse(r.patch_op) as PatchOp[]; } catch { return []; }
@@ -238,11 +275,26 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
           path: p.path.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"),
           value: p.value?.replace(/[A-Za-z]:\\[^\s"']*/g, "<redacted>"),
         }));
-        return [{ id: r.id, patternType: r.pattern_type, fileTarget: r.file_target.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"), patches: cleanPatches, learnedAt: r.created_at }];
+        const scope = r.scope ?? "local";
+        const cleanId = r.id.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/");
+        // fqid: non-local ids are already stored as "<scope>/<name>", local use "local/<id>"
+        const fqid = scope !== "local" ? cleanId : `local/${cleanId}`;
+        return [{
+          id: cleanId,
+          scope,
+          fqid,
+          patternType: r.pattern_type,
+          fileTarget: r.file_target.replace(/^[A-Za-z]:/, "").replace(/\\/g, "/"),
+          patches: cleanPatches,
+          version: r.ab_version ?? 1,
+          updatedAt: r.updated_at ?? r.created_at,
+          learnedAt: r.created_at,
+        }];
       });
       const payload = {
-        version: "0.1.0", generatedAt: new Date().toISOString(),
+        version: "1.7", generatedAt: new Date().toISOString(),
         ecosystem: ctx.state.ecosystems[0]?.adapter.name ?? "Unknown",
+        scope: "local",  // publisher scope — overridden by CLI syncRemotePush
         antibodyCount: sanitized.length, antibodies: sanitized,
       };
       const payloadPath = resolve(ctx.ws.afdDir, "global-vaccine-payload.json");
