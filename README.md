@@ -3,7 +3,7 @@
 </p>
 
 <h3 align="center">The Invisible Guardian for AI Agents</h3>
-<p align="center"><strong>Self-healing environments + 94% token savings. Your AI breaks things — afd fixes them in 184ms.</strong></p>
+<p align="center"><strong>Self-healing environments + 84% token savings. Your AI breaks things — afd fixes them in 184ms.</strong></p>
 
 <p align="center">
   <a href="https://github.com/dotoricode/autonomous-flow-daemon">
@@ -32,8 +32,8 @@
 | AI deletes `.claudeignore` | **30 min** manual fix | **0.2s** auto-heal |
 | Hook file corrupted | Re-inject hooks, restart session | **Silent background repair** |
 | `git checkout` triggers 50 events | AI goes haywire | **Mass-event suppressor** |
-| AI reads 8 large files (114KB) | **~28,600 tokens** consumed | **~1,700 tokens** (94% saved) |
-| Session token budget | Burns through context window | **26,900 tokens saved per batch** |
+| AI reads 8 large files (114KB) | **~28,600 tokens** consumed | **~4,600 tokens** (84% saved) |
+| Session token budget | Burns through context window | **~60,900 tokens saved per codebase scan** |
 
 > `< 0.1% CPU` | `~40MB RAM` | `< 270ms` full heal cycle | You never even see it happen.
 
@@ -84,7 +84,7 @@ And every time it reads your codebase? Full source files pumped straight into th
 | Feature | What it does |
 |:--------|:-------------|
 | **S.E.A.M Auto-Heal** | File deletion/corruption detected and restored in < 270ms |
-| **Hologram Extraction** | 80-94% lighter file skeletons served to AI agents via MCP |
+| **Hologram Extraction** | 70-96% lighter file skeletons served to AI agents via MCP |
 | **Smart Reader** | `afd_read` — small files raw, large files auto-compressed, line-range support |
 | **Workspace Map** | `afd://workspace-map` — full file tree + export signatures in one call |
 | **Import-Aware L1** | Only imported symbols get full signatures (85%+ savings) |
@@ -104,20 +104,20 @@ The hologram system is afd's biggest value driver. Here's what we measured in a 
 
 | Metric | Value |
 |:-------|:------|
-| Hologram requests | 8 calls |
-| Target files total size | ~114.5 KB (8 files, avg 14.3 KB each) |
-| Original token cost | ~28,600 tokens |
-| After hologram compression | ~1,700 tokens |
-| **Tokens saved** | **~26,900 tokens (94% reduction)** |
+| Hologram requests | 55 files analyzed |
+| Target files total size | ~290 KB (55 files, avg 5.3 KB each) |
+| Original token cost | ~72,500 tokens |
+| After hologram compression | ~11,600 tokens |
+| **Tokens saved** | **~60,900 tokens (84% reduction)** |
 
 ### How It Scales
 
 ```
 Session tokens (at ctx ~15%):  ~150,000  ████████████████
-Tokens saved by hologram:       ~26,900  ██░░░░░░░░░░░░░░  (18% of session)
+Tokens saved by hologram:       ~60,900  ████████░░░░░░░░  (41% of session)
 ```
 
-At ctx 50%+, file reads dominate the token budget. Without hologram, reading 8 large files costs ~28.6K tokens each time. With hologram, **each file costs 1/16th** of its original footprint — and the gap widens with every repeated read.
+At ctx 50%+, file reads dominate the token budget. Without hologram, scanning 55 source files costs ~72.5K tokens. With hologram, **each file averages just 16% of its original footprint** — and the gap widens with every repeated read.
 
 ### Three Layers of Token Optimization
 
