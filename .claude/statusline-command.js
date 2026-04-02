@@ -19,17 +19,7 @@ function render(data) {
                   + (usage.cache_read_input_tokens || 0)
                   + (usage.cache_creation_input_tokens || 0);
 
-  const cost      = data.cost?.total_cost_usd;
   const rate5h    = data.rate_limits?.five_hour?.used_percentage;
-
-  // git branch (동기 실행)
-  let branch = '';
-  try {
-    const { execSync } = require('child_process');
-    branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
-  } catch {}
 
   // context 색상 아이콘
   let ctxIcon = '🟢';
@@ -39,7 +29,7 @@ function render(data) {
   // 출력 조합
   const parts = [];
 
-  if (model) parts.push(model);
+  if (model) parts.push(model.replace(/\s*\([^)]*\)\s*/g, '').trim());
 
   if (usedPct !== undefined) {
     const kUsed = Math.round(totalUsed / 1000);
@@ -51,12 +41,6 @@ function render(data) {
     const rateIcon = rate5h >= 80 ? '⚠️ ' : '';
     parts.push(`${rateIcon}rate ${rate5h}%`);
   }
-
-  if (cost !== undefined) {
-    parts.push(`$${cost.toFixed(3)}`);
-  }
-
-  if (branch) parts.push(`⎇ ${branch}`);
 
   // afd daemon status
   function finish() {
@@ -82,15 +66,38 @@ function render(data) {
     })
       .then(r => r.json())
       .then(d => {
-        let afd = '';
-        if (d.total_defenses > 0 && d.defense_reasons && d.defense_reasons.length > 0) {
-          afd = `🛡️ [afd] ${d.total_defenses}건 방어 (${d.defense_reasons.join(', ')})`;
-        } else if (d.healed_count > 0) {
-          afd = `🛡️ [afd] ${d.healed_count}건 방어`;
-        } else {
-          afd = `🛡️ afd: ON`;
-        }
-        parts.push(afd);
+        const defenseText = d.total_defenses > 0 ? `${d.total_defenses}건 방어` : 'ON';
+        const currentSavedK = d.saved_tokens_k || 0;
+
+        // Session-scoped baseline tracking
+        const baselineFile = path.resolve(__dirname, '..', '.afd', 'session_baseline_saved.json');
+        let sessionSavedK = 0;
+        try {
+          let baseline = { savedK: currentSavedK, lastTotalUsed: totalUsed };
+          if (fs.existsSync(baselineFile)) {
+            const existing = JSON.parse(fs.readFileSync(baselineFile, 'utf-8'));
+            // 새 세션 감지: totalUsed가 이전보다 크게 줄었으면 세션 리셋
+            if (totalUsed < existing.lastTotalUsed * 0.5) {
+              baseline = { savedK: currentSavedK, lastTotalUsed: totalUsed };
+            } else {
+              baseline = { savedK: existing.savedK, lastTotalUsed: totalUsed };
+              sessionSavedK = Math.max(0, Math.round((currentSavedK - existing.savedK) * 10) / 10);
+            }
+          }
+          fs.writeFileSync(baselineFile, JSON.stringify(baseline), 'utf-8');
+        } catch { /* crash-only: baseline 실패 시 조용히 무시 */ }
+
+        // 현재 세션 기준 ctx 절약률
+        const sessionSavedRaw = sessionSavedK * 1000;
+        const sessionPotential = totalUsed + sessionSavedRaw;
+        const ctxSavePct = sessionPotential > 0 && sessionSavedRaw > 0
+          ? Math.round(sessionSavedRaw / sessionPotential * 100)
+          : 0;
+
+        const savedText = sessionSavedK > 0
+          ? ` (⬇️ ${sessionSavedK}k 절약, ctx -${ctxSavePct}%)`
+          : '';
+        parts.push(`🛡️ afd: ${defenseText}${savedText}`);
         finish();
       })
       .catch(() => {
