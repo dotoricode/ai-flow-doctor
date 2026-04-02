@@ -210,7 +210,23 @@
 - [x] Third-party validator adapter API (`ValidatorPlugin` interface)
 - [x] `afd plugin install <npm-package>` command
 
+### v1.9.0 — Real-time Notification Mesh ✅ READY-FOR-TEST 2026-04-03
+
+#### MCP Phase 3 — Push-based 알림 메시
+
+- [x] `SubscriptionManager` 모듈 신설 — 구독 URI 관리 및 알림 디스패처
+- [x] `initialize` 응답에 `capabilities.resources.subscribe: true` 추가
+- [x] `resources/subscribe` / `resources/unsubscribe` 핸들러 구현
+- [x] `notifications/resources/updated` 디스패처 구현
+- [x] `afd://quarantine` 리소스 — 격리 이벤트 발생 시 자동 알림
+- [x] `afd://events` 리소스 — S.E.A.M 사이클 실시간 브리지 (링 버퍼 200개)
+- [x] `afd://history/{path}` URI 템플릿 — 파일별 이벤트 히스토리 구독
+- [x] `insertAntibody` 훅 → `afd://antibodies` 업데이트 알림
+- [x] `quarantineFile` 훅 → `afd://quarantine` 업데이트 알림
+- [x] `autoHealFile` 훅 → `notifications/message` (level: warning) 한국어 알림
+- [x] `notifications/resources/list_changed` — 신규 동적 리소스 생성 시 발송
+- [x] `CLAUDE.md` Section 10: MCP 실시간 알림 프로토콜 에이전트 규칙 추가
+
 ### Future Phases (Unscheduled)
 
-- **MCP Phase 3:** Real-time notifications via MCP protocol
 - **Dashboard UI:** Web-based real-time antibody + mistake_history viewer
