@@ -72,6 +72,7 @@ program
   .option("--push", "Push local antibodies to team vaccine store")
   .option("--pull", "Pull antibodies from team vaccine store")
   .option("--remote <url>", "Remote vaccine store URL for push/pull")
+  .option("--local-mesh", "Bidirectional sync with all live mesh peers (monorepo)")
   .action(syncCommand);
 
 program

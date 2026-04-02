@@ -55,12 +55,20 @@ export async function isDaemonAlive(info: DaemonInfo): Promise<boolean> {
   }
 }
 
-export async function daemonRequest<T = unknown>(path: string): Promise<T> {
+export async function daemonRequest<T = unknown>(path: string, method?: "GET"): Promise<T>;
+export async function daemonRequest<T = unknown>(path: string, method: "POST", body: unknown): Promise<T>;
+export async function daemonRequest<T = unknown>(path: string, method: "GET" | "POST" = "GET", body?: unknown): Promise<T> {
   const info = getDaemonInfo();
   if (!info) throw new Error("Daemon not running. Run `afd start` first.");
-  const res = await fetch(`http://127.0.0.1:${info.port}${path}`, {
+  const init: RequestInit = {
+    method,
     signal: AbortSignal.timeout(5000),
-  });
+  };
+  if (method === "POST" && body !== undefined) {
+    init.body = JSON.stringify(body);
+    init.headers = { "Content-Type": "application/json" };
+  }
+  const res = await fetch(`http://127.0.0.1:${info.port}${path}`, init);
   if (!res.ok) throw new Error(`Daemon returned ${res.status}`);
   return res.json() as T;
 }

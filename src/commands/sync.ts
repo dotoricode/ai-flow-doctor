@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { resolve, join } from "path";
-import { daemonRequest } from "../daemon/client";
+import { daemonRequest, getMeshPeers } from "../daemon/client";
 import { AFD_DIR } from "../constants";
 import { getSystemLanguage } from "../core/locale";
 import { resolveScope } from "../core/federation";
@@ -20,6 +20,7 @@ interface SyncOptions {
   push?: boolean;
   pull?: boolean;
   remote?: string;
+  localMesh?: boolean;
 }
 
 const msgs = {
@@ -96,6 +97,11 @@ export async function syncCommand(opts: SyncOptions = {}) {
   const lang = getSystemLanguage();
   const m = msgs[lang];
 
+  if (opts.localMesh) {
+    await syncLocalMesh(m);
+    return;
+  }
+
   if (opts.remote) {
     const url = validateRemoteUrl(opts.remote, m);
     if (!url) return;
@@ -124,6 +130,112 @@ export async function syncCommand(opts: SyncOptions = {}) {
 
   // Default: export local payload (original behavior)
   await syncExport(m);
+}
+
+// ─── Local mesh sync ─────────────────────────────────────────────────────────
+
+/**
+ * Bidirectional antibody sync across all live mesh peers (monorepo daemons).
+ * For each peer:
+ *   1. Pull their antibodies → POST to our /antibodies/learn
+ *   2. Push our antibodies  → POST to their /antibodies/learn
+ * Conflict arbitration is handled by shouldAcceptRemote() on each daemon's side.
+ */
+async function syncLocalMesh(m: typeof msgs.en) {
+  const BOX = { tl: "┌", tr: "┐", bl: "└", br: "┘", h: "─", v: "│", ml: "├", mr: "┤" };
+  const W = 60;
+  const hline = (l: string, r: string) => `${l}${BOX.h.repeat(W)}${r}`;
+  const row = (s: string) => `${BOX.v} ${s}${" ".repeat(Math.max(0, W - 2 - s.length))} ${BOX.v}`;
+
+  let peers: Awaited<ReturnType<typeof getMeshPeers>>;
+  try {
+    peers = await getMeshPeers();
+  } catch {
+    console.error("[afd sync] Daemon not running. Start with `afd start`.");
+    process.exit(1);
+  }
+
+  console.log(hline(BOX.tl, BOX.tr));
+  console.log(row(`🔗 afd sync --local-mesh`));
+  console.log(hline(BOX.ml, BOX.mr));
+
+  if (peers.length === 0) {
+    console.log(row("No live mesh peers found. Start daemons in other workspaces."));
+    console.log(hline(BOX.bl, BOX.br));
+    return;
+  }
+
+  // Fetch our own antibodies once
+  const ours = (await daemonRequest<{ antibodies: AntibodyRow[] }>("/antibodies")).antibodies;
+
+  let totalPulled = 0;
+  let totalPushed = 0;
+
+  for (const peer of peers) {
+    const baseUrl = `http://127.0.0.1:${peer.port}`;
+    console.log(row(`Peer: ${peer.workspace} (port ${peer.port})`));
+
+    // 1. Pull from peer
+    try {
+      const theirData = await fetchJson<{ antibodies: AntibodyRow[] }>(`${baseUrl}/antibodies`);
+      for (const ab of theirData.antibodies) {
+        await daemonRequest<unknown>("/antibodies/learn", "POST", {
+          id: ab.id,
+          patternType: ab.pattern_type,
+          fileTarget: ab.file_target,
+          patches: JSON.parse(ab.patch_op),
+          scope: ab.scope ?? "local",
+          version: ab.ab_version ?? 1,
+          updatedAt: ab.updated_at,
+        });
+        totalPulled++;
+      }
+    } catch {
+      console.log(row(`  ⚠ Pull failed (peer may be busy)`));
+    }
+
+    // 2. Push to peer
+    try {
+      for (const ab of ours) {
+        await fetchJson<unknown>(`${baseUrl}/antibodies/learn`, {
+          method: "POST",
+          body: JSON.stringify({
+            id: ab.id,
+            patternType: ab.pattern_type,
+            fileTarget: ab.file_target,
+            patches: JSON.parse(ab.patch_op),
+            scope: ab.scope ?? "local",
+            version: ab.ab_version ?? 1,
+            updatedAt: ab.updated_at,
+          }),
+          headers: { "Content-Type": "application/json" },
+        });
+        totalPushed++;
+      }
+    } catch {
+      console.log(row(`  ⚠ Push failed (peer may be busy)`));
+    }
+  }
+
+  console.log(hline(BOX.ml, BOX.mr));
+  console.log(row(`✅ Synced ${peers.length} peer(s) — pulled ${totalPulled}, pushed ${totalPushed}`));
+  console.log(hline(BOX.bl, BOX.br));
+}
+
+interface AntibodyRow {
+  id: string;
+  pattern_type: string;
+  file_target: string;
+  patch_op: string;
+  scope: string;
+  ab_version: number;
+  updated_at: string;
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as T;
 }
 
 // ─── Remote helpers ───────────────────────────────────────────────────────────
