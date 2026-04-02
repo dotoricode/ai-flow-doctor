@@ -31,6 +31,7 @@ import type { DaemonState, DaemonContext, DaemonOptions, ValidatorFn } from "./t
 import { createWorkspaceMap } from "./workspace-map";
 import { startMcpStdio } from "./mcp-handler";
 import { createHttpHandler } from "./http-routes";
+import { assertInsideWorkspace } from "./guards";
 
 // ── State ──
 const state: DaemonState = {
@@ -119,6 +120,7 @@ export function main(options: DaemonOptions = {}) {
   const countAntibodies = db.prepare("SELECT COUNT(*) as cnt FROM antibodies");
   const insertUnlinkLog = db.prepare("INSERT INTO unlink_log (file_path, timestamp) VALUES (?, ?)");
   const findAntibodyByFile = db.prepare("SELECT id, dormant FROM antibodies WHERE file_target = ? AND dormant = 0");
+  const findAntibodyById = db.prepare("SELECT * FROM antibodies WHERE id = ?");
   const setAntibodyDormant = db.prepare("UPDATE antibodies SET dormant = 1 WHERE id = ?");
 
   // Hologram stats
@@ -160,7 +162,6 @@ export function main(options: DaemonOptions = {}) {
       const truncatedDesc = description.slice(0, 200);
       insertMistakeHistory.run(normalizedPath, mistakeType, truncatedDesc, antibodyId ?? null, Date.now());
       deleteMistakeOverflow.run(normalizedPath, normalizedPath);
-      // Update write-through cache
       const cached = state.mistakeCache.get(normalizedPath) ?? [];
       cached.unshift({ mistake_type: mistakeType, description: truncatedDesc, timestamp: Date.now() });
       if (cached.length > 5) cached.length = 5;
@@ -168,7 +169,6 @@ export function main(options: DaemonOptions = {}) {
     } catch { /* crash-only */ }
   }
 
-  // Load mistake cache from DB on startup (write-through cache)
   try {
     const allMistakes = db.prepare("SELECT file_path, mistake_type, description, timestamp FROM mistake_history ORDER BY timestamp DESC").all() as { file_path: string; mistake_type: string; description: string; timestamp: number }[];
     for (const row of allMistakes) {
@@ -270,7 +270,7 @@ export function main(options: DaemonOptions = {}) {
     for (const file of files) {
       const absPath = resolve(validatorsDir, file);
       try {
-        const mod = await import(`${absPath}?t=${Date.now()}`);
+        const mod = await import(absPath);
         const fn = mod.default ?? mod;
         if (typeof fn === "function") {
           state.customValidators.set(file, fn as ValidatorFn);
@@ -340,6 +340,7 @@ export function main(options: DaemonOptions = {}) {
       for (const patch of patches) {
         if (patch.op === "add" && patch.value) {
           const targetPath = resolve(patch.path.replace(/^\//, ""));
+          assertInsideWorkspace(targetPath, _ws.root);
           writeFileSync(targetPath, patch.value, "utf-8");
           bytesWritten += patch.value.length;
         }
@@ -366,7 +367,7 @@ export function main(options: DaemonOptions = {}) {
     if (isMassEvent(now)) { state.suppressionSkippedCount++; trackEvent("immune", "suppression", JSON.stringify({ filePath })); state.firstTapTimestamps.clear(); return null; }
     const antibody = findAntibodyByFile.get(filePath) as { id: string; dormant: number } | null;
     if (!antibody) return null;
-    const fullAntibody = db.prepare("SELECT * FROM antibodies WHERE id = ?").get(antibody.id) as { id: string; patch_op: string; file_target: string } | null;
+    const fullAntibody = findAntibodyById.get(antibody.id) as { id: string; patch_op: string; file_target: string } | null;
     if (!fullAntibody) return null;
     const previousTap = state.firstTapTimestamps.get(filePath);
     if (previousTap && (now - previousTap) < DOUBLE_TAP_WINDOW_MS) {
@@ -452,6 +453,7 @@ export function main(options: DaemonOptions = {}) {
     if (event === "unlink") {
       seam("Sense", `unlink → ${path}`);
       state.fileSnapshots.delete(path);
+      state.watchedFiles.delete(path);
       const result = handleUnlink(path, Date.now());
       if (result === "healed") {
         selfWrites.add(path);
