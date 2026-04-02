@@ -10,6 +10,7 @@ import type { PatchOp } from "../core/immune";
 import { buildShiftSummary } from "../core/boast";
 import { analyzeQuarantine, listQuarantine, evolve } from "../core/evolution";
 import { MAX_SSE_CLIENTS } from "./types";
+import { subscriptionManager } from "./mcp-subscriptions";
 import type { DaemonContext } from "./types";
 import { assertInsideWorkspace as _assertWs } from "./guards";
 import { shouldAcceptRemote } from "../core/federation";
@@ -185,6 +186,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         }
 
         ctx.insertAntibody.run(storageId, body.patternType, body.fileTarget, JSON.stringify(body.patches));
+        subscriptionManager.dispatchResourceUpdated("afd://antibodies");
         ctx.db.prepare(
           "UPDATE antibodies SET scope = ?, ab_version = ?, updated_at = ? WHERE id = ?"
         ).run(scope, incomingVersion, updatedAt, storageId);

@@ -27,12 +27,13 @@ import {
   DOUBLE_TAP_WINDOW_MS, MASS_EVENT_THRESHOLD, MASS_EVENT_WINDOW_MS,
   TAP_CLEANUP_INTERVAL_MS, SELF_WRITE_DEBOUNCE_MS, VALIDATOR_TIMEOUT_MS, VALIDATORS_DIR,
 } from "./types";
-import type { DaemonState, DaemonContext, DaemonOptions, ValidatorFn } from "./types";
+import type { DaemonState, DaemonContext, DaemonOptions, ValidatorFn, SeamEventEntry, QuarantineLogEntry } from "./types";
 import { createWorkspaceMap } from "./workspace-map";
 import { startMcpStdio } from "./mcp-handler";
 import { createHttpHandler } from "./http-routes";
 import { assertInsideWorkspace } from "./guards";
 import { registerMesh, deregisterMesh } from "./mesh";
+import { subscriptionManager } from "./mcp-subscriptions";
 
 // ── State ──
 const state: DaemonState = {
@@ -55,6 +56,8 @@ const state: DaemonState = {
   sseClients: new Set(),
   customValidators: new Map(),
   mistakeCache: new Map(),
+  seamEventLog: [],
+  quarantineLog: [],
 };
 
 const _ws = resolveWorkspacePaths();
@@ -94,14 +97,21 @@ function createSeamLogger(mcp: boolean) {
     } else {
       log(`[${formatTimestamp()}] [afd] [${phase}] ${msg}`);
     }
+    const ts = Date.now();
+    const payload = JSON.stringify({ phase, msg, ts });
+    // SSE 브로드캐스트
     const encoder = new TextEncoder();
-    const payload = JSON.stringify({ phase, msg, ts: Date.now() });
     const sseData = encoder.encode(`data: ${payload}\n\n`);
     const dead: ReadableStreamDefaultController<Uint8Array>[] = [];
     for (const controller of state.sseClients) {
       try { controller.enqueue(sseData); } catch { dead.push(controller); }
     }
     for (const c of dead) state.sseClients.delete(c);
+    // v1.9.0: SEAM 이벤트 링 버퍼 (최근 200개 유지)
+    state.seamEventLog.push({ phase, msg, ts } as SeamEventEntry);
+    if (state.seamEventLog.length > 200) state.seamEventLog.shift();
+    // MCP 구독자에게 afd://events 업데이트 알림
+    subscriptionManager.dispatchResourceUpdated("afd://events");
   };
 }
 
@@ -117,6 +127,11 @@ export function main(options: DaemonOptions = {}) {
   const insertAntibody = db.prepare(
     "INSERT OR REPLACE INTO antibodies (id, pattern_type, file_target, patch_op, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
   );
+  // v1.9.0: insertAntibody 래퍼 — DB 삽입 후 MCP afd://antibodies 알림 발송
+  function insertAntibodyAndNotify(...args: unknown[]) {
+    insertAntibody.run(...args);
+    subscriptionManager.dispatchResourceUpdated("afd://antibodies");
+  }
   const listAntibodies = db.prepare("SELECT * FROM antibodies ORDER BY created_at DESC");
   const antibodyIds = db.prepare("SELECT id FROM antibodies WHERE dormant = 0");
   const countAntibodies = db.prepare("SELECT COUNT(*) as cnt FROM antibodies");
@@ -238,6 +253,10 @@ export function main(options: DaemonOptions = {}) {
       const quarantinePath = resolve(QUARANTINE_DIR, `${ts}_${baseName}`);
       writeFileSync(quarantinePath, corruptedContent ?? "DELETED", "utf-8");
       seam("Quarantine", `Saved corrupted state → .afd/quarantine/${ts}_${baseName}`);
+      // v1.9.0: 격리 로그 업데이트 + MCP 알림
+      state.quarantineLog.push({ path: originalPath, ts: Date.now() } as QuarantineLogEntry);
+      if (state.quarantineLog.length > 100) state.quarantineLog.shift();
+      subscriptionManager.dispatchResourceUpdated("afd://quarantine");
     } catch (err) {
       seam("Quarantine", `FAILED to quarantine ${originalPath}: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -254,7 +273,7 @@ export function main(options: DaemonOptions = {}) {
       if (existsSync(filePath)) {
         const content = readFileSync(filePath, "utf-8");
         const patches: PatchOp[] = [{ op: "add", path: `/${filePath}`, value: content }];
-        insertAntibody.run(id, "auto-seed", filePath, JSON.stringify(patches));
+        insertAntibodyAndNotify(id, "auto-seed", filePath, JSON.stringify(patches));
         state.fileSnapshots.set(filePath, content);
         seam("Adapt", `Antibody ${id} seeded for ${filePath} (${content.length} bytes)`);
       }
@@ -361,6 +380,8 @@ export function main(options: DaemonOptions = {}) {
       const boast = maybeHealBoast(5);
       const fileName = fileTarget.split("/").pop() ?? fileTarget;
       (options.mcp ? console.error : console.log)(formatHealLog(fileName, metrics, boast));
+      // v1.9.0: 치유 완료 MCP 알림 (notifications/message)
+      subscriptionManager.dispatchMessage("warning", `[afd] ${fileTarget} 파일의 자가 치유가 완료되었습니다`);
     } catch (err) {
       seam("Mutate", `FAILED to restore ${fileTarget}: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -452,6 +473,11 @@ export function main(options: DaemonOptions = {}) {
     state.lastEventAt = Date.now();
     state.watchedFiles.add(path);
     insertEvent.run(event, path, Date.now());
+    // v1.9.0: 구독된 afd://history/{path} 리소스에 업데이트 알림
+    {
+      const normPath = path.replace(/\\/g, "/");
+      subscriptionManager.dispatchResourceUpdated(`afd://history/${normPath}`);
+    }
 
     if (event === "add" || event === "addDir") { seam("Sense", `${event} → ${path}`); snapshotFile(path); trackEvent("seam", "sense", null, Math.round(performance.now() - _seamStart)); return; }
 
@@ -511,7 +537,7 @@ export function main(options: DaemonOptions = {}) {
           if (prevCorruption && (now - prevCorruption) < DOUBLE_TAP_WINDOW_MS) {
             corruptionTaps.delete(path);
             state.fileSnapshots.set(path, newContent);
-            insertAntibody.run(abId, "auto-seed", path, JSON.stringify([{ op: "add", path: `/${path}`, value: newContent }]));
+            insertAntibodyAndNotify(abId, "auto-seed", path, JSON.stringify([{ op: "add", path: `/${path}`, value: newContent }]));
             trackEvent("immune", "heal_false_positive", JSON.stringify({ filePath: path, abId }));
             seam("Adapt", `Corruption double-tap on ${path} — standing down, accepting new content`);
           } else {
@@ -528,7 +554,7 @@ export function main(options: DaemonOptions = {}) {
         } else {
           state.fileSnapshots.set(path, newContent);
           const patches: PatchOp[] = [{ op: "add", path: `/${path}`, value: newContent }];
-          insertAntibody.run(abId, "auto-seed", path, JSON.stringify(patches));
+          insertAntibodyAndNotify(abId, "auto-seed", path, JSON.stringify(patches));
           trackEvent("immune", "heal_pass", JSON.stringify({ filePath: path, abId }));
           seam("Adapt", `Antibody ${abId} updated: stored latest ${path} (${newSize} bytes) for auto-restore`);
         }

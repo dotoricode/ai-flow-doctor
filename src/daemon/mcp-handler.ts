@@ -13,6 +13,7 @@ import type { Database } from "bun:sqlite";
 import type { DaemonContext } from "./types";
 import { APP_VERSION } from "../version";
 import { assertInsideWorkspace as _assertWs } from "./guards";
+import { subscriptionManager } from "./mcp-subscriptions";
 
 const MCP_MAX_BUFFER = 1024 * 1024; // 1 MB
 
@@ -110,6 +111,9 @@ function mcpError(id: unknown, code: number, message: string) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }) + "\n");
 }
 
+/** 동적으로 생성된 afd://history/{path} URI 추적 (list_changed 알림용) */
+const _knownHistoryPaths = new Set<string>();
+
 
 async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: string; params?: Record<string, unknown> }) {
   const { id, method, params } = req;
@@ -117,7 +121,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
   if (method === "initialize") {
     mcpResponse(id, {
       protocolVersion: "2024-11-05",
-      capabilities: { tools: {}, resources: {} },
+      capabilities: { tools: {}, resources: { subscribe: true } },
       serverInfo: { name: "afd", version: APP_VERSION },
     });
     return;
@@ -145,8 +149,42 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           description: "Live list of all active antibodies in the daemon's immune system. Each entry includes id, pattern_type, file_target, scope, version, and dormant status.",
           mimeType: "application/json",
         },
+        {
+          uri: "afd://quarantine",
+          name: "Quarantine Log",
+          description: "격리된 파일 목록. 패턴 격리(isolatePattern) 이벤트가 발생할 때 업데이트됩니다.",
+          mimeType: "application/json",
+        },
+        {
+          uri: "afd://events",
+          name: "SEAM Event Stream",
+          description: "실시간 S.E.A.M 이벤트 스트림. 구독 후 notifications/resources/updated 알림을 받습니다.",
+          mimeType: "application/json",
+        },
+        {
+          uri: "afd://history/{path}",
+          name: "File Event History",
+          description: "URI 템플릿: 특정 파일 경로의 이벤트 히스토리. 예: afd://history/src/core/db.ts",
+          mimeType: "application/json",
+        },
       ],
     });
+    return;
+  }
+
+  if (method === "resources/subscribe") {
+    const uri = params?.uri as string | undefined;
+    if (!uri) { mcpError(id, -32602, "Missing required parameter: uri"); return; }
+    subscriptionManager.subscribe(uri);
+    mcpResponse(id, {});
+    return;
+  }
+
+  if (method === "resources/unsubscribe") {
+    const uri = params?.uri as string | undefined;
+    if (!uri) { mcpError(id, -32602, "Missing required parameter: uri"); return; }
+    subscriptionManager.unsubscribe(uri);
+    mcpResponse(id, {});
     return;
   }
 
@@ -180,6 +218,39 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
       }));
       mcpResponse(id, {
         contents: [{ uri: "afd://antibodies", mimeType: "application/json", text: JSON.stringify({ total: antibodies.length, antibodies }, null, 2) }],
+      });
+      return;
+    }
+    if (uri === "afd://quarantine") {
+      const entries = ctx.state.quarantineLog ?? [];
+      mcpResponse(id, {
+        contents: [{ uri: "afd://quarantine", mimeType: "application/json", text: JSON.stringify({ total: entries.length, entries }, null, 2) }],
+      });
+      return;
+    }
+    if (uri === "afd://events") {
+      const entries = ctx.state.seamEventLog ?? [];
+      mcpResponse(id, {
+        contents: [{ uri: "afd://events", mimeType: "application/json", text: JSON.stringify({ total: entries.length, events: entries }, null, 2) }],
+      });
+      return;
+    }
+    // URI 템플릿: afd://history/{path}
+    if (uri && uri.startsWith("afd://history/")) {
+      const filePath = uri.slice("afd://history/".length);
+      if (!filePath) { mcpError(id, -32602, "history URI에 파일 경로가 필요합니다"); return; }
+      // 새 경로 처음 조회 시 list_changed 알림 발송
+      if (!_knownHistoryPaths.has(filePath)) {
+        _knownHistoryPaths.add(filePath);
+        subscriptionManager.dispatchListChanged();
+      }
+      const rows = ctx.db.query(
+        `SELECT type, path, timestamp FROM events WHERE path LIKE ? ORDER BY timestamp DESC LIMIT 50`
+      ).all?.() ?? [];
+      const filtered = (rows as { type: string; path: string; timestamp: number }[])
+        .filter(r => r.path.replace(/\\/g, "/").includes(filePath));
+      mcpResponse(id, {
+        contents: [{ uri, mimeType: "application/json", text: JSON.stringify({ path: filePath, total: filtered.length, events: filtered }, null, 2) }],
       });
       return;
     }
@@ -466,6 +537,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
 
 /** Start MCP stdio mode — blocks until stdin closes */
 export function startMcpStdio(ctx: DaemonContext) {
+  subscriptionManager.enable();
   console.error("[afd] MCP stdio mode — awaiting JSON-RPC on stdin");
 
   (async () => {

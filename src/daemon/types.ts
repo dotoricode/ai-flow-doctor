@@ -33,6 +33,19 @@ export interface MistakeEntry {
   timestamp: number;
 }
 
+/** SEAM 이벤트 로그 항목 (afd://events 리소스용) */
+export interface SeamEventEntry {
+  phase: string;
+  msg: string;
+  ts: number;
+}
+
+/** 격리(quarantine) 로그 항목 (afd://quarantine 리소스용) */
+export interface QuarantineLogEntry {
+  path: string;
+  ts: number;
+}
+
 export interface DaemonState {
   startedAt: number;
   filesDetected: number;
@@ -53,6 +66,10 @@ export interface DaemonState {
   sseClients: Set<ReadableStreamDefaultController<Uint8Array>>;
   customValidators: Map<string, ValidatorFn>;
   mistakeCache: Map<string, MistakeEntry[]>;
+  /** v1.9.0: 실시간 SEAM 이벤트 링 버퍼 (최근 200개) */
+  seamEventLog: SeamEventEntry[];
+  /** v1.9.0: 격리 이벤트 로그 (최근 100개) */
+  quarantineLog: QuarantineLogEntry[];
 }
 
 export interface DaemonOptions {

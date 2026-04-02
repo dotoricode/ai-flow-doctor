@@ -109,8 +109,43 @@ To avoid token waste and context pollution, only invoke subagents from the appro
 **Disabled MCP servers (this project):**
 `playwright`, `shadcn-ui`, `sqlite`, `memory`, `fetch`, `sequential-thinking`, `telegram` — afd 프로젝트에서 사용하지 않는 서버. 토큰 절약을 위해 비활성화됨.
 
+## 9. Task State Management (OMC CLI)
+- 이 프로젝트의 모든 작업 상태 관리는 반드시 터미널에서 **omc CLI 명령어**를 사용하여 기록할 것.
+- 작업 시작, 진행 상태 커밋, 완료 처리 등 모든 상태 변경은 omc CLI로 수행한다.
+- 확실치 않으면 `omc --help`를 참조할 것.
+
 ## 8. OMC Hook Discipline
 - OMC의 MAGIC KEYWORD 훅은 `UserPromptSubmit` 단계에서 키워드를 감지하여 스킬을 자동 호출한다.
 - **오작동 방지:** 일반 대화에서 스킬 키워드와 겹치는 단어(예: "deep", "interview", "analyze")가 포함되면 의도치 않은 스킬이 트리거될 수 있다.
 - **대응:** 오작동 발생 시 `OMC_SKIP_HOOKS=UserPromptSubmit`을 환경변수로 설정하거나, 해당 턴에서 스킬 호출을 무시하라.
 - **afd MCP 연결 복구:** 세션 중 `afd` MCP가 끊기면 `/mcp` 명령으로 재연결하라. `afd_read`(프롬프트 캐싱)와 `afd_hologram`(토큰 압축)은 이 프로젝트의 핵심 토큰 절약 도구다.
+
+## 10. MCP 실시간 알림 프로토콜 (v1.9.0)
+
+> **v1.9.0부터 afd MCP 서버는 Push-based 알림을 지원한다.** 아래 규칙을 엄격히 준수하라.
+
+### 10.1 리소스 업데이트 알림 대응 규칙
+- **`notifications/resources/updated` 수신 시 (예: `uri: "afd://antibodies"`):**
+  1. 해당 리소스를 **즉시 다시 읽어라** (`resources/read`로 최신 상태 조회).
+  2. 읽은 내용으로 내부 컨텍스트를 동기화하라.
+  3. 이전에 캐시된 리소스 내용을 무효화하라 — 알림 이후 캐시 값은 신뢰하지 마라.
+
+- **구독 가능한 리소스 목록:**
+  | URI | 이벤트 트리거 |
+  |-----|-------------|
+  | `afd://antibodies` | 항체 삽입/업데이트 시 |
+  | `afd://quarantine` | 파일 격리(isolatePattern) 시 |
+  | `afd://events` | S.E.A.M 사이클 이벤트 발생 시 |
+  | `afd://history/{path}` | 특정 파일에 이벤트 발생 시 |
+
+### 10.2 치유 완료 알림 대응 규칙
+- **`notifications/message` (level: `warning`) 수신 시:**
+  - 메시지 형식: `"[afd] {경로} 파일의 자가 치유가 완료되었습니다"`
+  - 해당 파일이 **afd에 의해 복구되었음을 명시적으로 인지하라.**
+  - 이전에 해당 파일에 가했던 편집 시도가 구조적 오류를 유발했음을 의미한다.
+  - 복구 후 재편집 시에는 `afd_hologram`으로 파일 구조를 먼저 파악하라.
+
+### 10.3 동적 리소스 목록 변경 알림
+- **`notifications/resources/list_changed` 수신 시:**
+  - `resources/list`를 다시 호출하여 새로 생성된 동적 리소스(예: `afd://history/{path}`)를 확인하라.
+  - 새 리소스를 필요에 따라 즉시 구독(`resources/subscribe`)할 수 있다.
