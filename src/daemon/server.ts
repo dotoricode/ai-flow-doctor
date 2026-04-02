@@ -40,7 +40,7 @@ const state: DaemonState = {
   lastEvent: null,
   lastEventAt: null,
   watchedFiles: new Set(),
-  hologramStats: { totalRequests: 0, totalOriginalChars: 0, totalHologramChars: 0 },
+  hologramStats: { totalRequests: 0, totalOriginalChars: 0, totalHologramChars: 0, sessionOriginalChars: 0, sessionHologramChars: 0 },
   ecosystems: [],
   autoHealCount: 0,
   autoHealLog: [],
@@ -197,6 +197,8 @@ export function main(options: DaemonOptions = {}) {
     state.hologramStats.totalOriginalChars += originalChars;
     state.totalSavedTokens += Math.max(0, Math.floor((originalChars - hologramChars) / 4));
     state.hologramStats.totalHologramChars += hologramChars;
+    state.hologramStats.sessionOriginalChars += originalChars;
+    state.hologramStats.sessionHologramChars += hologramChars;
     try {
       const hs = state.hologramStats;
       updateLifetime.run(hs.totalRequests, hs.totalOriginalChars, hs.totalHologramChars);

@@ -23,6 +23,8 @@ export interface HologramStats {
   totalRequests: number;
   totalOriginalChars: number;
   totalHologramChars: number;
+  sessionOriginalChars: number;
+  sessionHologramChars: number;
 }
 
 export interface MistakeEntry {

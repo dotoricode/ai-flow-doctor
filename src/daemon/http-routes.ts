@@ -42,6 +42,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         total_defenses: ctx.state.autoHealCount,
         defense_reasons: [...reasonSet],
         saved_tokens_k: Math.round(Math.max(0, ctx.state.hologramStats.totalOriginalChars - ctx.state.hologramStats.totalHologramChars) / 4 / 100) / 10,
+        session_saved_tokens_k: Math.round(Math.max(0, ctx.state.hologramStats.sessionOriginalChars - ctx.state.hologramStats.sessionHologramChars) / 4 / 100) / 10,
       });
     }
 
