@@ -62,16 +62,20 @@
 - 홀로그램 지원 언어: TypeScript/JS (full), Python (L0), **Go (full)**, Rust (L0)
 - 모든 테스트: 154/154 통과
 
-## ⭐ 다음 최우선 과제 (P1): v1.5 계획서 체크박스 갱신
-- `.omc/plans/afd-v1.5-trust-builder.md` — 코드는 완료됐으나 체크박스 미반영
-- 또는: Open Questions 5건 결정 (`open-questions.md`)
-  - mistake_type 저장 언어 (Korean vs English)
-  - mistake_history 보존 기간 (90일 vs 무기한)
-  - HUD defense count reset 정책
-  - Path normalization 전략
-  - Hologram L1 barrel file handling
+## 완료된 P1 작업 (추가)
+- ✅ **Open Questions 5건 결정** (`.omc/plans/open-questions.md`)
+  - Q1: mistake_type → **English enum** in DB, Korean at HUD render
+  - Q2: defense count → **session in-memory** reset, lifetime via `afd score`
+  - Q3: retention → **90일** (db.ts:97 purge 30d→90d 업데이트 필요)
+  - Q4: barrel file L1 → **v2.0 defer**, L0 fallback final for v1.x
+  - Q5: file_path → **workspace-relative POSIX** (`src/core/db.ts` 형식)
+
+## ⭐ 다음 최우선 과제 (P1): Q3 결정 코드 반영
+- `src/core/db.ts:97` — purge threshold `30 * 86400000` → `90 * 86400000`
+- 영향 범위: 1줄 변경, 테스트 불필요 (숫자 상수 변경)
 
 ## 기타 작업 후보 (P2~P3)
+- v1.5 계획서 체크박스 갱신 (코드 완료, 문서 미반영)
 - Rust extractor 추가 (tree-sitter-rust WASM, Go extractor 패턴 참조)
 - v1.7.0 Collective Intelligence 구현 착수
 

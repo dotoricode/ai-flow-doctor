@@ -158,6 +158,13 @@
 - [x] 9개 테스트 (`test/hologram-go.test.ts`) 추가, 전체 154/154 통과
 - [x] `tree-sitter-go@0.25.0` dependencies에 추가
 
+#### Architecture Decisions (Open Questions Resolved)
+- [x] `mistake_type` 저장 언어 결정 — English enum in DB, Korean at HUD render layer
+- [x] HUD defense count reset 정책 결정 — in-memory session-scoped, lifetime stats via `afd score`
+- [x] `mistake_history` 보존 기간 결정 — 90일 (`db.ts:97` purge threshold 30d → 90d)
+- [x] Barrel file L1 support 결정 — defer to v2.0, current L0 fallback is final for v1.x
+- [x] `file_path` 정규화 전략 결정 — workspace-relative POSIX forward-slash (`src/core/db.ts`)
+
 ---
 
 ## Future

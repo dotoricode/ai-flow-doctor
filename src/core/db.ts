@@ -94,7 +94,7 @@ export function initDb(): Database {
   `);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_path ON mistake_history(file_path)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_mistake_history_ts ON mistake_history(timestamp)`);
-  db.exec(`DELETE FROM mistake_history WHERE timestamp < unixepoch() * 1000 - 30 * 86400000`);
+  db.exec(`DELETE FROM mistake_history WHERE timestamp < unixepoch() * 1000 - 90 * 86400000`);
 
   // Migration: move data from old hologram_stats table if it exists
   try {
