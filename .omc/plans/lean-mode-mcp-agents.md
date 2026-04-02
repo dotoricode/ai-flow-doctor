@@ -12,11 +12,11 @@ afd 개발에 꼭 필요한 MCP 플러그인과 OMC 에이전트만 남기고,
 
 ## 수용 기준
 
-- [ ] 불필요한 OMC MCP 도구가 project settings.json 권한에서 제외됨
-- [ ] python_repl 등 afd와 무관한 도구가 명시적으로 차단됨
-- [ ] CLAUDE.md에 "Lean Agent 목록"이 정의됨 (에이전트는 비활성화 불가 — 사용 지침으로 대체)
-- [ ] afd MCP 도구(afd_read, afd_hologram, afd_diagnose, afd_score)는 계속 허용됨
-- [ ] 기존 동작(LSP, notepad, state, project_memory)이 유지됨
+- [x] 불필요한 OMC MCP 도구가 project settings.json 권한에서 제외됨
+- [x] python_repl 등 afd와 무관한 도구가 명시적으로 차단됨 (permissions.deny 추가)
+- [x] CLAUDE.md에 "Lean Agent 목록"이 정의됨 (에이전트는 비활성화 불가 — 사용 지침으로 대체)
+- [x] afd MCP 도구(afd_read, afd_hologram, afd_diagnose, afd_score)는 계속 허용됨
+- [x] 기존 동작(LSP, notepad, state, project_memory)이 유지됨
 
 ---
 

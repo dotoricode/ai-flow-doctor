@@ -101,6 +101,15 @@
       "mcp__plugin_oh-my-claudecode_t__trace_summary",
       "mcp__plugin_oh-my-claudecode_t__trace_timeline",
       "mcp__plugin_oh-my-claudecode_t__session_search"
+    ],
+    "deny": [
+      "mcp__plugin_oh-my-claudecode_t__python_repl",
+      "mcp__plugin_oh-my-claudecode_t__ast_grep_search",
+      "mcp__plugin_oh-my-claudecode_t__ast_grep_replace",
+      "mcp__plugin_oh-my-claudecode_t__lsp_code_actions",
+      "mcp__plugin_oh-my-claudecode_t__lsp_code_action_resolve",
+      "mcp__plugin_oh-my-claudecode_t__lsp_prepare_rename",
+      "mcp__plugin_oh-my-claudecode_t__lsp_servers"
     ]
   }
 }
