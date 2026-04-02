@@ -192,7 +192,7 @@
 - [x] Rule suggestion engine based on failure history
 - [x] Cross-project pattern correlation (`afd correlate`, `afd suggest --cross`)
 
-### v1.8.0 — Ecosystem Expansion
+### v1.8.0 — Ecosystem Expansion ✅ Released 2026-04-03
 
 #### MCP Phase 2 — Interactive Tools
 - [x] `afd_suggest` MCP tool: surface high-frequency vulnerability patterns from mistake_history
@@ -202,8 +202,8 @@
 
 #### Multi-Agent Coordination
 - [x] Cross-daemon HTTP bridge for monorepo setups (workspace discovery)
-- [/] @Session-1 Shared antibody namespace across sub-repos (`afd sync --local-mesh`)
-- [/] @Session-1 Conflict arbitration protocol for concurrent daemon writes
+- [x] Shared antibody namespace across sub-repos (`afd sync --local-mesh`)
+- [x] Conflict arbitration protocol for concurrent daemon writes
 
 #### Plugin System
 - [x] Plugin manifest format (`.afd/plugins/*.json`)
