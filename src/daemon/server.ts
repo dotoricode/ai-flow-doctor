@@ -32,6 +32,7 @@ import { createWorkspaceMap } from "./workspace-map";
 import { startMcpStdio } from "./mcp-handler";
 import { createHttpHandler } from "./http-routes";
 import { assertInsideWorkspace } from "./guards";
+import { registerMesh, deregisterMesh } from "./mesh";
 
 // ── State ──
 const state: DaemonState = {
@@ -76,6 +77,7 @@ function cleanup() {
   try { _cleanupResources.db?.close(); } catch {}
   try { unlinkSync(_ws.pidFile); } catch {}
   try { unlinkSync(_ws.portFile); } catch {}
+  try { deregisterMesh(_ws.root); } catch {}
 }
 
 // ── S.E.A.M Logger ──
@@ -577,6 +579,7 @@ export function main(options: DaemonOptions = {}) {
   mkdirSync(_ws.afdDir, { recursive: true });
   writeFileSync(_ws.pidFile, String(process.pid));
   writeFileSync(_ws.portFile, String(port));
+  try { registerMesh(_ws.root, port, process.pid); } catch {}
 
   console.log(`[afd daemon] pid=${process.pid} port=${port} workspace=${_ws.root}`);
 

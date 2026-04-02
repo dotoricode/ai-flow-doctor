@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, unlinkSync } from "fs";
 import { resolveWorkspacePaths } from "../constants";
+import type { MeshEntry } from "./mesh";
 
 export interface DaemonInfo {
   pid: number;
@@ -62,4 +63,8 @@ export async function daemonRequest<T = unknown>(path: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`Daemon returned ${res.status}`);
   return res.json() as T;
+}
+
+export async function getMeshPeers(): Promise<MeshEntry[]> {
+  return daemonRequest<MeshEntry[]>("/mesh/peers");
 }

@@ -195,19 +195,20 @@
 ### v1.8.0 — Ecosystem Expansion
 
 #### MCP Phase 2 — Interactive Tools
-- [ ] `afd_fix` MCP tool: apply patches interactively via Claude tool call
-- [ ] `afd_sync` MCP tool: push/pull remote vaccine store via MCP
-- [ ] MCP resource `afd://antibodies` — live antibody list via ReadMcpResource
+- [x] `afd_suggest` MCP tool: surface high-frequency vulnerability patterns from mistake_history
+- [x] `afd_fix` MCP tool: apply patches interactively via Claude tool call
+- [x] `afd_sync` MCP tool: push/pull remote vaccine store via MCP
+- [x] MCP resource `afd://antibodies` — live antibody list via ReadMcpResource
 
 #### Multi-Agent Coordination
-- [ ] Cross-daemon HTTP bridge for monorepo setups (workspace discovery)
-- [ ] Shared antibody namespace across sub-repos (`afd sync --local-mesh`)
-- [ ] Conflict arbitration protocol for concurrent daemon writes
+- [x] Cross-daemon HTTP bridge for monorepo setups (workspace discovery)
+- [/] @Session-1 Shared antibody namespace across sub-repos (`afd sync --local-mesh`)
+- [/] @Session-1 Conflict arbitration protocol for concurrent daemon writes
 
 #### Plugin System
-- [ ] Plugin manifest format (`.afd/plugins/*.json`)
-- [ ] Third-party validator adapter API (`ValidatorPlugin` interface)
-- [ ] `afd plugin install <npm-package>` command
+- [x] Plugin manifest format (`.afd/plugins/*.json`)
+- [x] Third-party validator adapter API (`ValidatorPlugin` interface)
+- [x] `afd plugin install <npm-package>` command
 
 ### Future Phases (Unscheduled)
 

@@ -7,6 +7,9 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { generateHologram } from "../core/hologram";
 import { diagnose } from "../core/immune";
+import { suggestRules } from "../core/rule-suggestion";
+import { generateValidator } from "../core/validator-generator";
+import type { Database } from "bun:sqlite";
 import type { DaemonContext } from "./types";
 import { APP_VERSION } from "../version";
 import { assertInsideWorkspace as _assertWs } from "./guards";
@@ -40,6 +43,43 @@ const mcpToolDefs = [
         diffOnly: { type: "boolean" as const, description: "Optional: return only changed declarations since last hologram call (unified-diff format). Saves tokens on repeated reads." },
       },
       required: ["file"],
+    },
+  },
+  {
+    name: "afd_suggest",
+    description: "Analyze mistake_history and return high-frequency vulnerability patterns as ranked suggestions. Call this FIRST before any bug fix or refactor to check for known quarantine patterns.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        days: { type: "number" as const, description: "Analysis window in days (default: 30)" },
+        min_frequency: { type: "number" as const, description: "Minimum occurrence count to surface a suggestion (default: 3)" },
+        limit: { type: "number" as const, description: "Maximum number of suggestions to return (default: 10)" },
+      },
+    },
+  },
+  {
+    name: "afd_fix",
+    description: "Generate and apply an auto-validator script to '.afd/validators/' for a known failure pattern. Use after afd_suggest to protect a file from recurring mistakes.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file_path: { type: "string" as const, description: "Workspace-relative path of the file to protect (e.g. 'src/core/db.ts')" },
+        failure_type: { type: "string" as const, enum: ["corruption", "deletion"], description: "Category of failure: 'corruption' (bad content) or 'deletion' (file removed). Default: 'corruption'" },
+        mistake_type: { type: "string" as const, description: "Optional label from afd_suggest output — embedded in the generated validator as a comment" },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "afd_sync",
+    description: "Push local antibodies to a remote vaccine store, or pull antibodies from a remote store into the running daemon. Wraps the bidirectional HTTP sync protocol.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        remote: { type: "string" as const, description: "Remote vaccine store URL (http:// or https://)" },
+        direction: { type: "string" as const, enum: ["push", "pull", "both"], description: "Sync direction: 'push', 'pull', or 'both' (default: 'both')" },
+      },
+      required: ["remote"],
     },
   },
   {
@@ -92,12 +132,20 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
 
   if (method === "resources/list") {
     mcpResponse(id, {
-      resources: [{
-        uri: "afd://workspace-map",
-        name: "Workspace Map",
-        description: "Project file tree with export signatures. Read this first to understand the codebase structure before reading individual files.",
-        mimeType: "text/plain",
-      }],
+      resources: [
+        {
+          uri: "afd://workspace-map",
+          name: "Workspace Map",
+          description: "Project file tree with export signatures. Read this first to understand the codebase structure before reading individual files.",
+          mimeType: "text/plain",
+        },
+        {
+          uri: "afd://antibodies",
+          name: "Antibody List",
+          description: "Live list of all active antibodies in the daemon's immune system. Each entry includes id, pattern_type, file_target, scope, version, and dormant status.",
+          mimeType: "application/json",
+        },
+      ],
     });
     return;
   }
@@ -107,6 +155,31 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
     if (uri === "afd://workspace-map") {
       mcpResponse(id, {
         contents: [{ uri: "afd://workspace-map", mimeType: "text/plain", text: ctx.getWorkspaceMap() }],
+      });
+      return;
+    }
+    if (uri === "afd://antibodies") {
+      const rows = ctx.db
+        .query<
+          { id: string; pattern_type: string; file_target: string; patch_op: string; dormant: number; scope: string; ab_version: number; updated_at: string; created_at: string },
+          []
+        >(
+          "SELECT id, pattern_type, file_target, patch_op, dormant, scope, ab_version, updated_at, created_at FROM antibodies ORDER BY updated_at DESC"
+        )
+        .all();
+      const antibodies = rows.map((r) => ({
+        id: r.id,
+        pattern_type: r.pattern_type,
+        file_target: r.file_target,
+        patch_op: r.patch_op,
+        dormant: r.dormant === 1,
+        scope: r.scope,
+        ab_version: r.ab_version,
+        updated_at: r.updated_at,
+        created_at: r.created_at,
+      }));
+      mcpResponse(id, {
+        contents: [{ uri: "afd://antibodies", mimeType: "application/json", text: JSON.stringify({ total: antibodies.length, antibodies }, null, 2) }],
       });
       return;
     }
@@ -247,6 +320,136 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
         const header = `⚠️ [afd-Optimizer]: File is ${sizeKB}KB. To save tokens, only the structural hologram is provided (${savings}% reduction).\nUse afd_read with startLine/endLine to read specific sections at full fidelity.\nTotal lines: ${source.split("\n").length}\n\n`;
         mcpResponse(id, {
           content: [{ type: "text", text: header + result.hologram, cache_control: { type: "ephemeral" } }],
+        });
+      } catch (err: unknown) {
+        mcpError(id, -32603, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    if (toolName === "afd_suggest") {
+      try {
+        const suggestions = suggestRules(ctx.db as unknown as Database, {
+          days: typeof args.days === "number" ? args.days : undefined,
+          minFrequency: typeof args.min_frequency === "number" ? args.min_frequency : undefined,
+          limit: typeof args.limit === "number" ? args.limit : undefined,
+        });
+        mcpResponse(id, {
+          content: [{ type: "text", text: JSON.stringify(suggestions, null, 2), cache_control: { type: "ephemeral" } }],
+        });
+      } catch (err: unknown) {
+        mcpError(id, -32603, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    if (toolName === "afd_fix") {
+      const filePath = args.file_path as string | undefined;
+      if (!filePath) { mcpError(id, -32602, "Missing required argument: file_path"); return; }
+      const failureType = (args.failure_type === "deletion" ? "deletion" : "corruption") as "corruption" | "deletion";
+      const mistakeType = typeof args.mistake_type === "string" ? args.mistake_type : "";
+      try {
+        const result = generateValidator({
+          failureType,
+          originalPath: filePath,
+          corruptedContent: mistakeType ? `// mistake: ${mistakeType}` : "",
+          restoredContent: null,
+        });
+        mcpResponse(id, {
+          content: [{ type: "text", text: JSON.stringify({
+            success: true,
+            filename: result.filename,
+            written: result.written,
+            reason: result.reason,
+            validatorPath: `.afd/validators/${result.filename}`,
+          }, null, 2) }],
+        });
+      } catch (err: unknown) {
+        mcpError(id, -32603, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    if (toolName === "afd_sync") {
+      const remote = args.remote as string | undefined;
+      if (!remote) { mcpError(id, -32602, "Missing required argument: remote"); return; }
+      const direction = (args.direction === "push" || args.direction === "pull") ? args.direction : "both";
+      const TIMEOUT_MS = 10_000;
+
+      // Validate URL
+      let remoteUrl: string;
+      try {
+        const u = new URL(remote);
+        if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("protocol must be http or https");
+        remoteUrl = u.toString();
+      } catch (err: unknown) {
+        mcpError(id, -32602, `Invalid remote URL: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+
+      const syncResults: { direction: string; status: string; detail?: string }[] = [];
+
+      try {
+        // PULL: GET remote payload → POST each antibody to /antibodies/learn
+        if (direction === "pull" || direction === "both") {
+          const pullRes = await fetch(remoteUrl, {
+            method: "GET",
+            headers: { "Accept": "application/json", "User-Agent": "afd-sync/1.8" },
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+          });
+          if (!pullRes.ok) {
+            syncResults.push({ direction: "pull", status: "error", detail: `HTTP ${pullRes.status} ${pullRes.statusText}` });
+          } else {
+            const json = await pullRes.json() as { antibodies?: unknown[] };
+            if (!json || !Array.isArray(json.antibodies)) {
+              syncResults.push({ direction: "pull", status: "error", detail: "Invalid response: missing antibodies array" });
+            } else {
+              let learned = 0;
+              for (const ab of json.antibodies as Record<string, unknown>[]) {
+                try {
+                  const learnRes = await fetch(`http://127.0.0.1:${ctx.port}/antibodies/learn`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(ab),
+                    signal: AbortSignal.timeout(2000),
+                  });
+                  if (learnRes.ok) learned++;
+                } catch { /* skip individual failures */ }
+              }
+              syncResults.push({ direction: "pull", status: "ok", detail: `${learned}/${json.antibodies.length} antibodies learned` });
+            }
+          }
+        }
+
+        // PUSH: fetch local payload via /sync → POST to remote
+        if (direction === "push" || direction === "both") {
+          const localRes = await fetch(`http://127.0.0.1:${ctx.port}/sync`, {
+            signal: AbortSignal.timeout(2000),
+          });
+          if (!localRes.ok) {
+            syncResults.push({ direction: "push", status: "error", detail: "Failed to fetch local payload from daemon" });
+          } else {
+            const localPayload = await localRes.json() as { antibodyCount?: number };
+            if ((localPayload.antibodyCount ?? 0) === 0) {
+              syncResults.push({ direction: "push", status: "skip", detail: "No local antibodies to push" });
+            } else {
+              const pushRes = await fetch(remoteUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "User-Agent": "afd-sync/1.8" },
+                body: JSON.stringify(localPayload),
+                signal: AbortSignal.timeout(TIMEOUT_MS),
+              });
+              if (!pushRes.ok) {
+                syncResults.push({ direction: "push", status: "error", detail: `HTTP ${pushRes.status} ${pushRes.statusText}` });
+              } else {
+                syncResults.push({ direction: "push", status: "ok", detail: `${localPayload.antibodyCount} antibodies pushed` });
+              }
+            }
+          }
+        }
+
+        mcpResponse(id, {
+          content: [{ type: "text", text: JSON.stringify({ remote: remoteUrl, results: syncResults }, null, 2) }],
         });
       } catch (err: unknown) {
         mcpError(id, -32603, err instanceof Error ? err.message : String(err));

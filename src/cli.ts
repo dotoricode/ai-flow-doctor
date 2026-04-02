@@ -19,6 +19,7 @@ import { hooksCommand } from "./commands/hooks";
 import { benchmarkCommand } from "./commands/benchmark";
 import { suggestCommand } from "./commands/suggest";
 import { correlateCommand } from "./commands/correlate";
+import { pluginCommand } from "./commands/plugin";
 import { APP_VERSION } from "./version";
 import { trackCliCommand } from "./core/telemetry";
 
@@ -143,5 +144,12 @@ program
   .option("--top <n>", "Show only top N files")
   .option("--json", "Output raw JSON for programmatic use")
   .action(benchmarkCommand);
+
+program
+  .command("plugin")
+  .description("Manage third-party validator plugins (install, list, remove)")
+  .argument("[subcommand]", "install | list | remove")
+  .argument("[arg]", "npm package name or plugin name")
+  .action(pluginCommand);
 
 program.parse();

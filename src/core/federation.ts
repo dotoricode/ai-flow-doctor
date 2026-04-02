@@ -93,3 +93,37 @@ export function remoteWins(
   // Same version — use updatedAt as tiebreaker (newer wins)
   return remoteUpdatedAt > localUpdatedAt;
 }
+
+/**
+ * Conflict arbitration for split-brain scenarios.
+ *
+ * Called when version AND updatedAt are identical but patch content differs
+ * (two daemons learned the same antibody concurrently and produced different patches).
+ *
+ * Strategy: deterministic lexicographic comparison of serialised patch content.
+ * The "larger" content string wins — ensures all peers converge to the same value
+ * without coordination, as long as both sides run the same function.
+ *
+ * Returns true if the remote patch should overwrite the local one.
+ */
+export function arbitrateConflict(remotePatch: string, localPatch: string): boolean {
+  return remotePatch > localPatch;
+}
+
+/**
+ * Full conflict resolution combining RWIN + arbitration.
+ * Use this as the single decision point in /antibodies/learn.
+ */
+export function shouldAcceptRemote(
+  remote: { version: number; updatedAt: string; patch: string },
+  local: { version: number; updatedAt: string; patch: string },
+): { accept: boolean; reason: "newer_version" | "newer_timestamp" | "arbitrated" | "local_wins" } {
+  if (remote.version > local.version) return { accept: true, reason: "newer_version" };
+  if (remote.version < local.version) return { accept: false, reason: "local_wins" };
+  // Same version
+  if (remote.updatedAt > local.updatedAt) return { accept: true, reason: "newer_timestamp" };
+  if (remote.updatedAt < local.updatedAt) return { accept: false, reason: "local_wins" };
+  // True split-brain: identical version + timestamp, different content
+  if (remote.patch === local.patch) return { accept: false, reason: "local_wins" };
+  return { accept: arbitrateConflict(remote.patch, local.patch), reason: "arbitrated" };
+}

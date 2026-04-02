@@ -12,7 +12,8 @@ import { analyzeQuarantine, listQuarantine, evolve } from "../core/evolution";
 import { MAX_SSE_CLIENTS } from "./types";
 import type { DaemonContext } from "./types";
 import { assertInsideWorkspace as _assertWs } from "./guards";
-import { remoteWins } from "../core/federation";
+import { shouldAcceptRemote } from "../core/federation";
+import { listMeshPeers } from "./mesh";
 
 /** Create the HTTP fetch handler for Bun.serve */
 export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
@@ -162,19 +163,25 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         // Non-local antibodies are stored under their fqid to avoid collisions
         const storageId = scope === "local" ? body.id : `${scope}/${body.id}`;
 
-        type ExistingRow = { ab_version: number; updated_at: string } | null;
+        const incomingPatch = JSON.stringify(body.patches);
+
+        type ExistingRow = { ab_version: number; updated_at: string; patch_op: string } | null;
         const existing = ctx.db.prepare(
-          "SELECT ab_version, updated_at FROM antibodies WHERE id = ?"
+          "SELECT ab_version, updated_at, patch_op FROM antibodies WHERE id = ?"
         ).get(storageId) as ExistingRow;
 
         if (existing) {
-          if (!remoteWins(incomingVersion, updatedAt, existing.ab_version, existing.updated_at)) {
-            return Response.json({ status: "skipped", reason: "local_is_newer_or_equal", id: storageId });
+          const decision = shouldAcceptRemote(
+            { version: incomingVersion, updatedAt, patch: incomingPatch },
+            { version: existing.ab_version, updatedAt: existing.updated_at, patch: existing.patch_op },
+          );
+          if (!decision.accept) {
+            return Response.json({ status: "skipped", reason: decision.reason, id: storageId });
           }
           ctx.db.prepare(
             "UPDATE antibodies SET patch_op = ?, file_target = ?, ab_version = ?, updated_at = ?, scope = ? WHERE id = ?"
-          ).run(JSON.stringify(body.patches), body.fileTarget, incomingVersion, updatedAt, scope, storageId);
-          return Response.json({ status: "updated", id: storageId });
+          ).run(incomingPatch, body.fileTarget, incomingVersion, updatedAt, scope, storageId);
+          return Response.json({ status: "updated", reason: decision.reason, id: storageId });
         }
 
         ctx.insertAntibody.run(storageId, body.patternType, body.fileTarget, JSON.stringify(body.patches));
@@ -339,6 +346,10 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       } catch {
         return Response.json({ days, rows: [] });
       }
+    }
+
+    if (url.pathname === "/mesh/peers") {
+      return Response.json(listMeshPeers(ctx.ws.root));
     }
 
     if (url.pathname === "/stop") {
