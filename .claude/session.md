@@ -3,7 +3,7 @@
 > 마지막 업데이트: 2026-04-03 | 브랜치: main
 
 ## 현재 상태
-- 버전: **v1.7.0-STABLE** ✅ (Collective Intelligence 6/6 구현 완료 · 2026-04-03 릴리스)
+- 버전: **v1.8.0-ALPHA: Native MCP Integrated** 🔧 (MCP Phase 2 도구 3종 구현 완료)
 - 홀로그램 지원 언어: TypeScript/JS (full) · Python (L0) · Go (full) · Rust (full)
 - 모든 테스트: **193/193 통과** (12 신규: correlation-engine) | 빌드: **75모듈**
 - Working tree: **dirty** (미커밋 작업 다수 — 커밋 대기)
@@ -19,8 +19,17 @@
 | Rule suggestion engine (`afd suggest`) | ✅ | `src/core/rule-suggestion.ts`, `src/commands/suggest.ts` |
 | **Cross-project pattern correlation** | ✅ | `src/core/correlation-engine.ts`, `src/commands/correlate.ts` |
 
-## ⭐ 다음 단계: v1.8.0 계획
-v1.7.0 정식 릴리스 완료 (2026-04-03). v1.8.0 체크리스트는 `docs/roadmap.md:197` 참조.
+## ⭐ v1.8.0 진행 현황
+
+| 항목 | 상태 | 파일 |
+|---|---|---|
+| `afd_suggest` MCP tool | ✅ | `src/daemon/mcp-handler.ts` |
+| `afd_fix` MCP tool | ✅ | `src/daemon/mcp-handler.ts` |
+| `afd_sync` MCP tool | ✅ | `src/daemon/mcp-handler.ts` |
+| MCP resource `afd://antibodies` | ✅ | `src/daemon/mcp-handler.ts` |
+| Cross-daemon HTTP bridge | ✅ | `src/daemon/http-routes.ts`, `src/commands/sync.ts` |
+
+MCP 등록 명령: `afd mcp install` (`.mcp.json` + `~/.claude.json` 자동 업데이트)
 
 ## 멀티-세션 협업 프로토콜
 - 세션 식별: `export CLAUDE_SESSION_ID=@Session-1` (각 터미널에서 실행)

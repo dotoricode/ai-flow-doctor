@@ -11,6 +11,7 @@ last_updated: 2026-04-03
 | 세션 ID | 역할 | 시작 시각 | 현재 작업 |
 |---|---|---|---|
 | @Session-1 | Coordinator | 2026-04-03 | v1.8.0 설계 |
+| @Session-2 | Feature Dev | 2026-04-03 | 접속 중 |
 
 ## 세션 추가 방법
 
@@ -20,3 +21,4 @@ export CLAUDE_SESSION_ID=@Session-2
 ```
 
 그리고 이 파일의 "등록된 세션" 테이블에 행 추가.
+| @Session-2 | Feature Dev | 2026-04-03 | 미정 |

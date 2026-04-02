@@ -55,10 +55,8 @@ function render(data) {
   }
 
   try {
-    const afdDir       = path.resolve(__dirname, '..', '.afd');
-    const portFile     = path.join(afdDir, 'daemon.port');
-    const pidFile      = path.join(afdDir, 'daemon.pid');
-    const baselineFile = path.join(afdDir, 'session_baseline_tokens');
+    const afdDir   = path.resolve(__dirname, '..', '.afd');
+    const portFile = path.join(afdDir, 'daemon.port');
 
     if (!fs.existsSync(portFile)) {
       parts.push('🛡️ afd: OFF');
@@ -81,46 +79,15 @@ function render(data) {
           return;
         }
 
-        // ── 세션 격리 계산 ──────────────────────────────────────
-        // saved_tokens_k 가 없으면 절약 계산 스킵 (데몬 초기화 직후 등)
-        const rawSavedK = d.saved_tokens_k;
-        const currentTotalSaved = rawSavedK != null ? Math.round(rawSavedK * 1000) : null;
-
-        // 현재 데몬 PID 읽기 (세션 변경 감지에 사용)
-        let currentPid = null;
-        try { currentPid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10) || null; } catch {}
-
-        // 베이스라인 파일 읽기
-        let baseline    = null;
-        let baselinePid = null;
-        try {
-          const raw  = JSON.parse(fs.readFileSync(baselineFile, 'utf-8'));
-          baseline    = typeof raw.baseline === 'number' ? raw.baseline : null;
-          baselinePid = raw.pid;
-        } catch {}
-
-        // 베이스라인 초기화 조건:
-        //   1) 파일이 없거나 손상됨 → 이번이 이 세션의 첫 실행
-        //   2) 데몬 PID가 바뀜 → 데몬 재시작 = 새 세션
-        //   단, currentTotalSaved 가 null 이면 아직 데이터 없음 → 초기화 안 함
-        if (currentTotalSaved !== null &&
-            (baseline === null || (currentPid !== null && baselinePid !== currentPid))) {
-          baseline = currentTotalSaved;
-          try {
-            fs.writeFileSync(
-              baselineFile,
-              JSON.stringify({ baseline, pid: currentPid }),
-              'utf-8'
-            );
-          } catch {}
-        }
+        // ── 세션 절약량: 데몬이 직접 추적하는 session_saved_tokens_k 사용 ──
+        // afd start 이후 누적값으로 데몬 재시작 시 자동 리셋됨 (베이스라인 파일 불필요)
+        const rawSessionK = d.session_saved_tokens_k;
+        const sessionSaved = rawSessionK != null ? Math.round(rawSessionK * 1000) : null;
 
         // ── 정확한 절약률 계산 ──────────────────────────────────
         const defenseLabel = d.total_defenses > 0 ? `${d.total_defenses}건` : 'ON';
 
-        if (currentTotalSaved !== null && baseline !== null) {
-          // session_saved = 현재 세션에서 afd가 절약한 토큰
-          const sessionSaved    = Math.max(0, currentTotalSaved - baseline);
+        if (sessionSaved !== null) {
           const sessionPotential = totalUsed + sessionSaved;
           const savingRate = (sessionPotential > 0 && sessionSaved > 0)
             ? Math.round(sessionSaved / sessionPotential * 100)
