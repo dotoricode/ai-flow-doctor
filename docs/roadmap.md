@@ -96,7 +96,7 @@
 #### Bug Fixes
 - [x] Windows path normalization in `assertInsideWorkspace()` (backslash → forward slash)
 
-### v1.6.0 — Hook Manager
+### v1.6.0 — Hook Manager + Hologram Engine
 
 #### Multi-Owner Hook Orchestration
 - [x] `HookOwner` model: afd / omc / user zone classification by id prefix
@@ -109,13 +109,34 @@
 - [x] `ClaudeCodeAdapter.removeHooks` uses `KNOWN_AFD_HOOKS` for safe targeted removal
 - [x] 28 unit tests covering classification, merge, conflict detection, read/write, summary
 
+#### Hologram Engine Overhaul
+- [x] Tree-sitter (web-tree-sitter WASM) 기반 엔진으로 전면 교체 — TS compiler API 제거
+- [x] 다국어 지원: TypeScript/JS (full), Python (L0 fallback), Go/Rust (fallback)
+- [x] `src/core/hologram/` 서브모듈 구조 — engine, types, ts-extractor, py-extractor, fallback, incremental
+- [x] Incremental hologram — LCS 기반 diff-only 모드 (`changedNodes`, `isDiff`)
+- [x] True LRU 캐시 (최대 200 엔트리)
+- [x] LCS guard: n×m > 50,000 → full diff fallback (270ms 예산 보호)
+
+#### Event Batching
+- [x] `EventBatcher` (`src/daemon/event-batcher.ts`) — 300ms 디바운스, immune 파일 fast-path
+- [x] Dedup (last-event-wins), add+unlink 상쇄 처리
+- [x] `flush()`, `destroy()`, `pendingCount`, `totalBatches` 통계
+
+#### Bug Fixes (Self-Healing Audit)
+- [x] P0: `autoHealFile` 경로 탈출 취약점 — `assertInsideWorkspace` 가드 추가
+- [x] P0: `pick()` 빈 배열 크래시 방어
+- [x] P1: validator dynamic import `?t=Date.now()` 모듈 캐시 누수 제거
+- [x] P1: `unlink` 이벤트 시 `watchedFiles` Set 누수 방지
+- [x] P1: hologram 마이그레이션 `db.transaction()` 원자성 보장
+- [x] P1: `findAntibodyById` prepared statement 핫 패스에서 초기화 블록으로 이동
+
 ---
 
 ## Future
 
-### v1.4.0 (Planned)
+### v1.7.0 — Collective Intelligence
 
-#### Collective Intelligence
+#### Team Antibody Federation
 - [ ] Remote vaccine store (`afd sync --remote <url>`)
 - [ ] Team antibody federation — share learned patterns across repos
 - [ ] Antibody versioning and conflict resolution
@@ -124,11 +145,6 @@
 - [ ] Auto-validator generation from quarantine patterns
 - [ ] Rule suggestion engine based on failure history
 - [ ] Cross-project pattern correlation
-
-#### Performance
-- [ ] Tree-sitter integration for non-TS/JS semantic diff
-- [ ] Incremental hologram (diff-only updates)
-- [ ] Watcher event batching for high-churn directories
 
 ### Future Phases
 
