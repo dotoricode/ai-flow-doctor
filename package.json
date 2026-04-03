@@ -4,10 +4,15 @@
   "description": "Zero-config immunity for AI coding workflows. Self-heals broken configs in < 270ms.",
   "type": "module",
   "bin": {
-    "afd": "./src/cli.ts"
+    "afd": "./bin/afd.js"
   },
   "main": "./src/cli.ts",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "os": ["darwin", "linux", "win32"],
   "files": [
+    "bin/afd.js",
     "src/**/*.ts",
     "mcp-config.json",
     "README.md",
