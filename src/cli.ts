@@ -5,6 +5,7 @@ import { stopCommand } from "./commands/stop";
 import { restartCommand } from "./commands/restart";
 import { statusCommand } from "./commands/status";
 import { scoreCommand } from "./commands/score";
+import { dashboardCommand } from "./commands/dashboard";
 import { fixCommand } from "./commands/fix";
 import { syncCommand } from "./commands/sync";
 import { diagnoseCommand } from "./commands/diagnose";
@@ -60,6 +61,11 @@ program
   .command("score")
   .description("Show current diagnostic stats from the daemon")
   .action(scoreCommand);
+
+program
+  .command("dashboard")
+  .description("Live token savings dashboard — real-time TUI (Ctrl+C to exit)")
+  .action(dashboardCommand);
 
 program
   .command("fix")
