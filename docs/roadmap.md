@@ -130,45 +130,29 @@
 - [x] P1: hologram 마이그레이션 `db.transaction()` 원자성 보장
 - [x] P1: `findAntibodyById` prepared statement 핫 패스에서 초기화 블록으로 이동
 
-### v1.6.1 — Hologram Precision Engine
+### v1.7.0 — Collective Intelligence
 
-#### Smart Bypass (순수 타입 파일 우회)
+#### Hologram Precision Engine (prev. v1.6.1)
 - [x] `isPureTypeFile()`: 최상위 AST 노드 타입만 O(n) 스캔 → 구현부 없는 파일 즉시 반환
 - [x] 판정 기준: `type_alias_declaration`, `interface_declaration`, `export_statement`(선언형만) 조합
 - [x] 1~2ms 이내 판정 보장 (깊은 트리 탐색 없음)
 - [x] 순수 타입 파일 절감률 0% — 압축 불필요 파일에 연산 낭비 제거
-
-#### L1 Symbol Extraction (심볼 핀셋 추출)
 - [x] `HologramOptions`에 `symbols?: string[]` 파라미터 추가
 - [x] `getDeclarationName()`: export 래핑 언래핑 포함 범용 심볼명 추출
 - [x] 지정 심볼만 AST에서 핀셋 추출 — 전체 홀로그램 대신 필요한 선언만 반환
 - [x] `afd_read` MCP 스키마에 `symbols` 파라미터 추가 (선택적, 완전 하위 호환)
 - [x] 파일 크기와 무관하게 심볼 지정 시 즉시 추출 모드 진입
 - [x] 검증: `DaemonState` 단독 조회 → 10.8% → **78.8%** 절감 (7.3배 향상)
-
-#### Bug Fixes
 - [x] `mistakeCache` warm-up 경로 정규화 — Windows 백슬래시 → 포워드 슬래시
 
-### v1.6.2 — Go Language Support
-
-#### Go Extractor
+#### Go Language Support (prev. v1.6.2)
 - [x] `src/core/hologram/go-extractor.ts` — tree-sitter-go WASM 기반 Go 파싱
 - [x] 추출 대상: package, import, type(struct/interface/alias), func, method(receiver)
 - [x] struct 필드 전체 보존, interface method_elem 직접 추출
 - [x] 9개 테스트 (`test/hologram-go.test.ts`) 추가, 전체 154/154 통과
 - [x] `tree-sitter-go@0.25.0` dependencies에 추가
 
-#### Architecture Decisions (Open Questions Resolved)
-- [x] `mistake_type` 저장 언어 결정 — English enum in DB, Korean at HUD render layer
-- [x] HUD defense count reset 정책 결정 — in-memory session-scoped, lifetime stats via `afd score`
-- [x] `mistake_history` 보존 기간 결정 — 90일 (`db.ts:97` purge threshold 30d → 90d)
-- [x] Barrel file L1 support 결정 — defer to v2.0, current L0 fallback is final for v1.x
-- [x] `file_path` 정규화 전략 결정 — workspace-relative POSIX forward-slash (`src/core/db.ts`)
-- [x] `.omc/plans/afd-v1.5-trust-builder.md` 체크박스 전체 동기화 (23개 `[x]`, plan↔roadmap 완전 일치)
-
-### v1.6.3 — Rust Language Support
-
-#### Rust Extractor
+#### Rust Language Support (prev. v1.6.3)
 - [x] `src/core/hologram/rust-extractor.ts` — tree-sitter-rust WASM 기반 Rust 파싱
 - [x] 추출 대상: use, mod, struct(fields), enum(variants), trait(signatures), type alias, impl(method stubs), fn
 - [x] impl Trait for Type 및 generic impl 헤더 정확 추출
@@ -176,11 +160,12 @@
 - [x] `tree-sitter-rust@0.24.0` dependencies에 추가
 - [x] 기존 `.rs` L0 fallback 테스트 → `.xyz` unknown extension으로 교정
 
----
-
-## Future
-
-### v1.7.0 — Collective Intelligence ✅ Released 2026-04-03
+#### Architecture Decisions
+- [x] `mistake_type` 저장 언어 결정 — English enum in DB, Korean at HUD render layer
+- [x] HUD defense count reset 정책 결정 — in-memory session-scoped, lifetime stats via `afd score`
+- [x] `mistake_history` 보존 기간 결정 — 90일 (`db.ts:97` purge threshold 30d → 90d)
+- [x] Barrel file L1 support 결정 — defer to v2.0, current L0 fallback is final for v1.x
+- [x] `file_path` 정규화 전략 결정 — workspace-relative POSIX forward-slash (`src/core/db.ts`)
 
 #### Team Antibody Federation
 - [x] Remote vaccine store (`afd sync --remote <url>`)
@@ -192,7 +177,7 @@
 - [x] Rule suggestion engine based on failure history
 - [x] Cross-project pattern correlation (`afd correlate`, `afd suggest --cross`)
 
-### v1.8.0 — Ecosystem Expansion ✅ Released 2026-04-03
+### v1.8.0 — Ecosystem Expansion
 
 #### MCP Phase 2 — Interactive Tools
 - [x] `afd_suggest` MCP tool: surface high-frequency vulnerability patterns from mistake_history
@@ -210,10 +195,9 @@
 - [x] Third-party validator adapter API (`ValidatorPlugin` interface)
 - [x] `afd plugin install <npm-package>` command
 
-### v1.9.0 — Real-time Notification Mesh ✅ READY-FOR-TEST 2026-04-03
+### v1.9.0 — Real-time Notification Mesh + Token Dashboard
 
 #### MCP Phase 3 — Push-based 알림 메시
-
 - [x] `SubscriptionManager` 모듈 신설 — 구독 URI 관리 및 알림 디스패처
 - [x] `initialize` 응답에 `capabilities.resources.subscribe: true` 추가
 - [x] `resources/subscribe` / `resources/unsubscribe` 핸들러 구현
@@ -226,6 +210,20 @@
 - [x] `autoHealFile` 훅 → `notifications/message` (level: warning) 한국어 알림
 - [x] `notifications/resources/list_changed` — 신규 동적 리소스 생성 시 발송
 - [x] `CLAUDE.md` Section 10: MCP 실시간 알림 프로토콜 에이전트 규칙 추가
+
+#### Token Dashboard (`afd dashboard`)
+- [x] `src/commands/dashboard.ts` — live TUI (3s polling + SSE hybrid)
+- [x] TODAY'S SAVINGS: hologram + wsmap + pinpoint 합산 이중 바 차트
+- [x] LIFETIME ROI & BREAKDOWN: 타입별 절약량 + 추정 비용
+- [x] 7-DAY HISTORY: 일별 통합 절약률 + 토큰 범위
+- [x] Korean locale auto-detection (LANG/Intl.DateTimeFormat)
+- [x] ctx_savings_daily / ctx_savings_lifetime DB 테이블
+- [x] 소형 파일(< 10KB)도 분모에 포함하는 정직한 절약률 계산
+- [x] wsmap 절약량: 실제 읽기 시점에만 기록 (백그라운드 리빌드 제외)
+
+---
+
+## Future
 
 ### Future Phases (Unscheduled)
 

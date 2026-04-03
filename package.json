@@ -1,6 +1,6 @@
 {
   "name": "autonomous-flow-daemon",
-  "version": "1.6.0",
+  "version": "1.9.0",
   "description": "Zero-config immunity for AI coding workflows. Self-heals broken configs in < 270ms.",
   "type": "module",
   "bin": {
