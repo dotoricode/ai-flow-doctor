@@ -79,7 +79,11 @@ function setupEcosystem(cwd: string, msg: MessageDict): SetupResult[] {
   return results;
 }
 
-export async function startCommand(options?: { mcp?: boolean }) {
+export async function startCommand(options?: { mcp?: boolean; restart?: boolean }) {
+  if (options?.restart) {
+    const { stopCommand } = await import("./stop");
+    await stopCommand();
+  }
   // MCP stdio mode: run daemon in foreground with stdio transport
   if (options?.mcp) {
     const { main: runDaemon } = await import("../daemon/server");

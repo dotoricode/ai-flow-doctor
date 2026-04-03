@@ -148,20 +148,20 @@
   "hotPaths": [
     {
       "path": "src\\daemon\\server.ts",
-      "accessCount": 45,
-      "lastAccessed": 1775220042859,
+      "accessCount": 52,
+      "lastAccessed": 1775226998421,
       "type": "directory"
     },
     {
       "path": "docs\\roadmap.md",
-      "accessCount": 33,
-      "lastAccessed": 1775151409921,
+      "accessCount": 36,
+      "lastAccessed": 1775225056793,
       "type": "file"
     },
     {
       "path": "src\\commands\\dashboard.ts",
-      "accessCount": 26,
-      "lastAccessed": 1775220591529,
+      "accessCount": 27,
+      "lastAccessed": 1775226509859,
       "type": "file"
     },
     {
@@ -184,8 +184,8 @@
     },
     {
       "path": "src\\cli.ts",
-      "accessCount": 13,
-      "lastAccessed": 1775219789251,
+      "accessCount": 16,
+      "lastAccessed": 1775227279279,
       "type": "file"
     },
     {
@@ -195,16 +195,28 @@
       "type": "file"
     },
     {
+      "path": "src\\daemon\\types.ts",
+      "accessCount": 10,
+      "lastAccessed": 1775226492699,
+      "type": "directory"
+    },
+    {
+      "path": "src",
+      "accessCount": 10,
+      "lastAccessed": 1775226640691,
+      "type": "directory"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 10,
+      "lastAccessed": 1775227188530,
+      "type": "file"
+    },
+    {
       "path": "src\\daemon\\client.ts",
       "accessCount": 9,
       "lastAccessed": 1775214010341,
       "type": "file"
-    },
-    {
-      "path": "src\\daemon\\types.ts",
-      "accessCount": 9,
-      "lastAccessed": 1775220030507,
-      "type": "directory"
     },
     {
       "path": "CLAUDE.md",
@@ -219,9 +231,15 @@
       "type": "directory"
     },
     {
+      "path": "src\\core\\db.ts",
+      "accessCount": 7,
+      "lastAccessed": 1775226576243,
+      "type": "file"
+    },
+    {
       "path": "src\\commands\\suggest.ts",
-      "accessCount": 6,
-      "lastAccessed": 1775144009798,
+      "accessCount": 7,
+      "lastAccessed": 1775227209749,
       "type": "file"
     },
     {
@@ -231,16 +249,16 @@
       "type": "directory"
     },
     {
-      "path": "src\\core\\db.ts",
-      "accessCount": 6,
-      "lastAccessed": 1775219789811,
-      "type": "file"
-    },
-    {
       "path": "src\\daemon\\workspace-map.ts",
       "accessCount": 5,
       "lastAccessed": 1775220026380,
       "type": "file"
+    },
+    {
+      "path": "src\\core\\boast.ts",
+      "accessCount": 5,
+      "lastAccessed": 1775226395916,
+      "type": "directory"
     },
     {
       "path": "docs\\release\\v1.8.0-audit.md",
@@ -249,21 +267,15 @@
       "type": "file"
     },
     {
-      "path": "src\\core\\boast.ts",
+      "path": "src\\core\\federation.ts",
       "accessCount": 4,
-      "lastAccessed": 1775214010275,
-      "type": "directory"
+      "lastAccessed": 1775226400724,
+      "type": "file"
     },
     {
       "path": ".claude\\session-lock.md",
       "accessCount": 3,
       "lastAccessed": 1775149106033,
-      "type": "file"
-    },
-    {
-      "path": "src\\core\\federation.ts",
-      "accessCount": 3,
-      "lastAccessed": 1775149724176,
       "type": "file"
     },
     {
@@ -273,28 +285,52 @@
       "type": "file"
     },
     {
+      "path": "src\\core\\rule-suggestion.ts",
+      "accessCount": 3,
+      "lastAccessed": 1775226423080,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\validator-generator.ts",
+      "accessCount": 3,
+      "lastAccessed": 1775226454400,
+      "type": "file"
+    },
+    {
       "path": "test\\correlation-engine.test.ts",
       "accessCount": 2,
       "lastAccessed": 1775144089786,
       "type": "file"
     },
     {
-      "path": "src\\core\\rule-suggestion.ts",
+      "path": "src\\core\\correlation-engine.ts",
       "accessCount": 2,
-      "lastAccessed": 1775148591267,
+      "lastAccessed": 1775226407213,
       "type": "file"
     },
     {
-      "path": "src\\core\\validator-generator.ts",
+      "path": "src\\core\\evolution.ts",
       "accessCount": 2,
-      "lastAccessed": 1775148591596,
+      "lastAccessed": 1775226440100,
       "type": "file"
     },
     {
-      "path": "src",
+      "path": "src\\core\\plugin-manager.ts",
       "accessCount": 2,
-      "lastAccessed": 1775211567445,
-      "type": "directory"
+      "lastAccessed": 1775226458915,
+      "type": "file"
+    },
+    {
+      "path": "src\\daemon\\mesh.ts",
+      "accessCount": 2,
+      "lastAccessed": 1775226514525,
+      "type": "file"
+    },
+    {
+      "path": "src\\commands\\correlate.ts",
+      "accessCount": 2,
+      "lastAccessed": 1775227210353,
+      "type": "file"
     },
     {
       "path": "src\\core\\locale.ts",
@@ -306,18 +342,6 @@
       "path": "test\\rule-suggestion.test.ts",
       "accessCount": 1,
       "lastAccessed": 1775143806145,
-      "type": "file"
-    },
-    {
-      "path": "src\\core\\correlation-engine.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775143915435,
-      "type": "file"
-    },
-    {
-      "path": "src\\commands\\correlate.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775143958846,
       "type": "file"
     },
     {
@@ -339,21 +363,9 @@
       "type": "directory"
     },
     {
-      "path": "src\\core\\plugin-manager.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775149388344,
-      "type": "file"
-    },
-    {
       "path": "src\\commands\\plugin.ts",
       "accessCount": 1,
       "lastAccessed": 1775149406317,
-      "type": "file"
-    },
-    {
-      "path": "src\\daemon\\mesh.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775149440605,
       "type": "file"
     },
     {
@@ -369,12 +381,6 @@
       "type": "directory"
     },
     {
-      "path": "src\\core\\evolution.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775150698998,
-      "type": "file"
-    },
-    {
       "path": "src\\daemon\\mcp-subscriptions.ts",
       "accessCount": 1,
       "lastAccessed": 1775150841432,
@@ -385,6 +391,60 @@
       "accessCount": 1,
       "lastAccessed": 1775219827011,
       "type": "directory"
+    },
+    {
+      "path": "bin\\afd.js",
+      "accessCount": 1,
+      "lastAccessed": 1775225664371,
+      "type": "file"
+    },
+    {
+      "path": "src\\adapters\\index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226385592,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\telemetry.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226392322,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\rule-engine.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226418571,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\semantic-diff.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226427049,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\discovery.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226431662,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\vaccine-registry.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226450582,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\yaml-minimal.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226462885,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\hologram.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775226500087,
+      "type": "file"
     }
   ],
   "userDirectives": []

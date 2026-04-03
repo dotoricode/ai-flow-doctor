@@ -20,7 +20,6 @@ import { detectEcosystem } from "../adapters/index";
 import { calcHealMetrics, maybeHealBoast, formatHealLog, formatDormantLog } from "../core/boast";
 import { discoverWatchTargets } from "../core/discovery";
 import { formatTimestamp, lineDiff } from "../core/log-utils";
-import { semanticDiff, isAstSupported } from "../core/semantic-diff";
 import { LruStringMap } from "../core/lru-map";
 
 import {
@@ -540,20 +539,9 @@ export function main(options: DaemonOptions = {}) {
       const newSize = newContent.length;
 
       if (oldContent !== undefined && oldContent !== newContent) {
-        if (isAstSupported(path)) {
-          try {
-            const sdiff = semanticDiff(path, oldContent, newContent);
-            const breakingTag = sdiff.hasBreakingChanges ? " ⚠️ BREAKING" : "";
-            seam("Sense", `change → ${path} (${newSize} bytes)${breakingTag}\n  [semantic] ${sdiff.summary}`);
-          } catch {
-            const diffs = lineDiff(oldContent, newContent);
-            seam("Sense", `change → ${path} (${newSize} bytes)\n${diffs.join("\n")}`);
-          }
-        } else {
-          const diffs = lineDiff(oldContent, newContent);
-          if (diffs.length > 0) seam("Sense", `change → ${path} (${newSize} bytes)\n${diffs.join("\n")}`);
-          else seam("Sense", `change → ${path} (${newSize} bytes, whitespace-only diff)`);
-        }
+        const diffs = lineDiff(oldContent, newContent);
+        if (diffs.length > 0) seam("Sense", `change → ${path} (${newSize} bytes)\n${diffs.join("\n")}`);
+        else seam("Sense", `change → ${path} (${newSize} bytes, whitespace-only diff)`);
       } else if (oldContent === undefined) {
         seam("Sense", `change → ${path} (${newSize} bytes, no previous snapshot)`);
       } else {

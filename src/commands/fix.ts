@@ -58,7 +58,13 @@ async function getDaemonPort(): Promise<number> {
   return parseInt(readFileSync(paths.portFile, "utf-8").trim(), 10);
 }
 
-export async function fixCommand() {
+export async function fixCommand(opts?: { deep?: boolean }) {
+  // --deep: run full rule-based health analysis (previously `afd doctor --fix`)
+  if (opts?.deep) {
+    const { doctorCommand } = await import("./doctor");
+    await doctorCommand({ fix: true });
+    return;
+  }
   let diagnosis: DiagnosisResult;
   try {
     diagnosis = await daemonRequest<DiagnosisResult>("/diagnose");

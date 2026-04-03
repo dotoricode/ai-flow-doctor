@@ -67,7 +67,19 @@ function visualWidth(s: string): number {
   return w;
 }
 
-export async function evolutionCommand(opts: { generate?: boolean } = {}) {
+export async function evolutionCommand(opts: { generate?: boolean; suggest?: boolean; cross?: boolean; days?: string; min?: string; apply?: boolean; minScopes?: string; includeLocal?: boolean } = {}) {
+  // --suggest: delegate to suggest command logic
+  if (opts.suggest) {
+    const { suggestCommand } = await import("./suggest");
+    await suggestCommand({ days: opts.days, min: opts.min, apply: opts.apply, cross: opts.cross });
+    return;
+  }
+  // --cross: delegate to correlate command logic
+  if (opts.cross && !opts.suggest) {
+    const { correlateCommand } = await import("./correlate");
+    await correlateCommand({ minScopes: opts.minScopes, apply: opts.apply, includeLocal: opts.includeLocal });
+    return;
+  }
   const lang = getSystemLanguage();
   const m = msgs[lang];
 
