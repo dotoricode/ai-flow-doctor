@@ -28,8 +28,8 @@ const msgs = {
     done: (step: string) => `  ✓ Done: ${step}`,
     already: (step: string) => `  · Already configured: ${step}`,
     allDone: "\nafd setup complete. Your project is protected.",
-    hintDashboard: "  Run 'afd dashboard' to see live token savings.",
-    hintRestart: "  Restart Claude Code or run /mcp to connect.",
+    hintDashboard: "  Run 'afd web' to see live token savings in your browser.",
+    hintRestart: "  Run /mcp in Claude Code to connect (no restart needed).",
   },
   ko: {
     welcome: "afd setup — 대화형 프로젝트 설정",
@@ -42,8 +42,8 @@ const msgs = {
     done: (step: string) => `  ✓ 완료: ${step}`,
     already: (step: string) => `  · 이미 설정됨: ${step}`,
     allDone: "\nafd setup 완료. 프로젝트가 보호됩니다.",
-    hintDashboard: "  'afd dashboard'로 실시간 토큰 절약량을 확인하세요.",
-    hintRestart: "  Claude Code를 재시작하거나 /mcp로 연결하세요.",
+    hintDashboard: "  'afd web'으로 브라우저에서 실시간 토큰 절약량을 확인하세요.",
+    hintRestart: "  Claude Code에서 /mcp를 실행하면 바로 연결됩니다 (재시작 불필요).",
   },
 };
 
