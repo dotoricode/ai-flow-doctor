@@ -102,7 +102,7 @@ export interface DaemonContext {
   // Helper functions
   seam: (phase: string, msg: string) => void;
   persistHologramStats: (originalChars: number, hologramChars: number) => void;
-  persistCtxSavings: (type: 'wsmap' | 'pinpoint', originalChars: number, savedChars: number) => void;
+  persistCtxSavings: (type: 'wsmap' | 'pinpoint' | 'raw_read', originalChars: number, savedChars: number) => void;
   safeHologram: (filePath: string, source: string) => Promise<string>;
   getWorkspaceMap: () => string;
   getWorkspaceMapStats: () => { totalProjectBytes: number; mapBytes: number };

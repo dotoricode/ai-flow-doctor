@@ -15,6 +15,7 @@ import type { DaemonContext } from "./types";
 import { assertInsideWorkspace as _assertWs } from "./guards";
 import { shouldAcceptRemote } from "../core/federation";
 import { listMeshPeers } from "./mesh";
+import { estimateTokenSavings } from "../core/token-estimator";
 
 /** Create the HTTP fetch handler for Bun.serve */
 export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
@@ -50,7 +51,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       const dailyRows = ctx.getDailyAll.all();
       const todayRow = dailyRows.find(r => r.date === todayStr);
       const sessionSavedTokensK = todayRow
-        ? Math.round(Math.max(0, todayRow.original_chars - todayRow.hologram_chars) / 4 / 100) / 10
+        ? Math.round(estimateTokenSavings(todayRow.original_chars, todayRow.hologram_chars) / 100) / 10
         : 0;
       return Response.json({
         status: "ON",
@@ -59,7 +60,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         total_defenses: ctx.state.autoHealCount,
         defense_reasons: [...reasonSet],
         latest_defense: latestDefense,
-        saved_tokens_k: Math.round(Math.max(0, ctx.state.hologramStats.totalOriginalChars - ctx.state.hologramStats.totalHologramChars) / 4 / 100) / 10,
+        saved_tokens_k: Math.round(estimateTokenSavings(ctx.state.hologramStats.totalOriginalChars, ctx.state.hologramStats.totalHologramChars) / 100) / 10,
         session_saved_tokens_k: sessionSavedTokensK,
       });
     }
@@ -78,11 +79,48 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         _assertWs(absPath, ctx.ws.root);
         const source = readFileSync(absPath, "utf-8");
         const contextFile = url.searchParams.get("contextFile");
-        const result = await generateHologram(file, source, contextFile ? { contextFile: resolve(contextFile) } : undefined);
+        const nDepthParam = url.searchParams.get("nDepth");
+        const nDepth = nDepthParam ? Math.min(parseInt(nDepthParam, 10), 3) : undefined;
+        const opts: Record<string, unknown> = {};
+        if (contextFile) opts.contextFile = resolve(contextFile);
+        if (nDepth && nDepth >= 2) opts.nDepth = nDepth;
+        const result = await generateHologram(file, source, opts as any);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
         return Response.json(result);
       } catch (err: unknown) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 404 });
+      }
+    }
+
+    if (url.pathname === "/files") {
+      try {
+        const { readdirSync, statSync } = await import("fs");
+        const { join, relative } = await import("path");
+        const SKIP = new Set(["node_modules", ".git", ".afd", "dist", ".next", "__pycache__", "target"]);
+        const EXT = new Set(["ts","tsx","js","jsx","py","pyi","go","rs","json","md","yaml","yml","toml"]);
+        const files: string[] = [];
+        function walk(dir: string, depth: number) {
+          if (depth > 4 || files.length > 500) return;
+          let entries: string[];
+          try { entries = readdirSync(dir); } catch { return; }
+          for (const e of entries) {
+            if (e.startsWith(".") || SKIP.has(e)) continue;
+            const full = join(dir, e);
+            try {
+              const st = statSync(full);
+              if (st.isDirectory()) walk(full, depth + 1);
+              else if (st.isFile()) {
+                const ext = e.split(".").pop()?.toLowerCase() ?? "";
+                if (EXT.has(ext)) files.push(relative(ctx.ws.root, full).replace(/\\/g, "/"));
+              }
+            } catch {}
+          }
+        }
+        walk(ctx.ws.root, 0);
+        files.sort();
+        return Response.json({ root: ctx.ws.root, files });
+      } catch (err) {
+        return Response.json({ error: String(err) }, { status: 500 });
       }
     }
 
@@ -369,6 +407,24 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       cleanup();
       setTimeout(() => process.exit(0), 100);
       return Response.json({ status: "stopping" });
+    }
+
+    // ── Web Dashboard ──
+    if (url.pathname === "/dashboard") {
+      try {
+        const html = readFileSync(resolve(import.meta.dirname, "dashboard.html"), "utf-8");
+        return new Response(html, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Content-Security-Policy": "default-src 'self' 'unsafe-inline'",
+          },
+        });
+      } catch {
+        return new Response("<h1>dashboard.html not found</h1>", {
+          status: 404,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
     }
 
     return Response.json({ error: "not found" }, { status: 404 });

@@ -35,7 +35,7 @@ const mcpToolDefs = [
   },
   {
     name: "afd_hologram",
-    description: "Generate a token-efficient hologram (type skeleton) for a source file (TS, JS, Python). Use contextFile for L1 filtering. Use diffOnly for incremental updates showing only changed declarations.",
+    description: "Generate a token-efficient hologram (type skeleton) for a source file. For prompt-cached access, prefer reading the resource `afd://hologram/{path}` instead. Use this tool only when you need contextFile (L1 filtering) or diffOnly (incremental updates).",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -101,6 +101,19 @@ const mcpToolDefs = [
       required: ["file"],
     },
   },
+  {
+    name: "afd_read_raw",
+    description: "Full-text file reader (no hologram compression). Use ONLY when you genuinely need the complete source — e.g., for editing, diffing, or debugging line-level issues. Prefer afd_read for exploration.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file: { type: "string" as const, description: "Relative or absolute file path" },
+        startLine: { type: "number" as const, description: "Optional start line (1-based)" },
+        endLine: { type: "number" as const, description: "Optional end line (1-based)" },
+      },
+      required: ["file"],
+    },
+  },
 ];
 
 function mcpResponse(id: unknown, result: unknown) {
@@ -113,6 +126,7 @@ function mcpError(id: unknown, code: number, message: string) {
 
 /** 동적으로 생성된 afd://history/{path} URI 추적 (list_changed 알림용) */
 const _knownHistoryPaths = new Set<string>();
+const _knownHologramPaths = new Set<string>();
 
 
 async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?: string; params?: Record<string, unknown> }) {
@@ -166,6 +180,12 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           name: "File Event History",
           description: "URI 템플릿: 특정 파일 경로의 이벤트 히스토리. 예: afd://history/src/core/db.ts",
           mimeType: "application/json",
+        },
+        {
+          uri: "afd://hologram/{path}",
+          name: "File Hologram (Cached)",
+          description: "Token-efficient structural hologram for a source file. Served via resources/read for Anthropic prompt caching. URI example: afd://hologram/src/daemon/server.ts",
+          mimeType: "text/plain",
         },
       ],
     });
@@ -259,6 +279,36 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
       });
       return;
     }
+    // Hologram resource — prompt-cacheable via resources/read
+    if (uri && uri.startsWith("afd://hologram/")) {
+      const filePath = uri.slice("afd://hologram/".length);
+      if (!filePath) { mcpError(id, -32602, "hologram URI에 파일 경로가 필요합니다"); return; }
+      try {
+        const absPath = resolve(filePath);
+        _assertWs(absPath, ctx.ws.root);
+        const source = readFileSync(absPath, "utf-8");
+        const result = await generateHologram(filePath, source);
+        ctx.persistHologramStats(result.originalLength, result.hologramLength);
+        const savings = Math.round((1 - result.hologramLength / result.originalLength) * 100);
+        const header = `// [afd hologram] ${filePath} (${(source.length/1024).toFixed(1)}KB → ${result.hologramLength} chars, ${savings}% saved)\n// Total lines: ${source.split("\n").length}\n\n`;
+        // list_changed 알림 for new dynamic hologram URIs
+        if (!_knownHologramPaths.has(filePath)) {
+          _knownHologramPaths.add(filePath);
+          subscriptionManager.dispatchListChanged();
+        }
+        mcpResponse(id, {
+          contents: [{
+            uri,
+            mimeType: "text/plain",
+            text: header + result.hologram,
+            cache_control: { type: "ephemeral" },
+          }],
+        });
+      } catch (err: unknown) {
+        mcpError(id, -32603, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
     mcpError(id, -32602, `Unknown resource: ${uri}`);
     return;
   }
@@ -290,7 +340,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
       }));
 
       mcpResponse(id, {
-        content: [{ type: "text", text: JSON.stringify({ ...result, symptoms: enriched }, null, 2), cache_control: { type: "ephemeral" } }],
+        content: [{ type: "text", text: JSON.stringify({ ...result, symptoms: enriched }, null, 2) }],
       });
       return;
     }
@@ -315,7 +365,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
             massEventsSkipped: ctx.state.suppressionSkippedCount,
             dormantTransitions: ctx.state.dormantTransitions.length,
           },
-        }, null, 2), cache_control: { type: "ephemeral" } }],
+        }, null, 2) }],
       });
       return;
     }
@@ -335,7 +385,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
         const result = await generateHologram(file, source, Object.keys(opts).length > 0 ? opts as { contextFile?: string; diffOnly?: boolean } : undefined);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
         mcpResponse(id, {
-          content: [{ type: "text", text: result.hologram, cache_control: { type: "ephemeral" } }],
+          content: [{ type: "text", text: result.hologram }],
         });
       } catch (err: unknown) {
         mcpError(id, -32603, err instanceof Error ? err.message : String(err));
@@ -368,7 +418,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           const slice = lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join("\n");
           ctx.persistCtxSavings('pinpoint', source.length, Math.max(0, source.length - slice.length));
           mcpResponse(id, {
-            content: [{ type: "text", text: `// ${file} lines ${start + 1}-${end} (${sizeKB}KB total)\n${slice}`, cache_control: { type: "ephemeral" } }],
+            content: [{ type: "text", text: `// ${file} lines ${start + 1}-${end} (${sizeKB}KB total)\n${slice}` }],
           });
           return;
         }
@@ -380,7 +430,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           ctx.persistCtxSavings('pinpoint', result.originalLength, Math.max(0, result.originalLength - result.hologramLength));
           const header = `// [afd L1] ${file} — symbols: [${symbols.join(", ")}]\n\n`;
           mcpResponse(id, {
-            content: [{ type: "text", text: header + result.hologram, cache_control: { type: "ephemeral" } }],
+            content: [{ type: "text", text: header + result.hologram }],
           });
           return;
         }
@@ -390,7 +440,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           // not just compressed files. This makes the savings % honest.
           ctx.persistHologramStats(source.length, source.length);
           mcpResponse(id, {
-            content: [{ type: "text", text: source, cache_control: { type: "ephemeral" } }],
+            content: [{ type: "text", text: source }],
           });
           return;
         }
@@ -398,9 +448,45 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
         const result = await generateHologram(file, source);
         ctx.persistHologramStats(result.originalLength, result.hologramLength);
         const savings = Math.round((1 - result.hologramLength / result.originalLength) * 100);
-        const header = `⚠️ [afd-Optimizer]: File is ${sizeKB}KB. To save tokens, only the structural hologram is provided (${savings}% reduction).\nUse afd_read with startLine/endLine to read specific sections at full fidelity.\nTotal lines: ${source.split("\n").length}\n\n`;
+        const holoUri = `afd://hologram/${file.replace(/\\/g, "/")}`;
+        const header = `⚠️ [afd-Optimizer]: File is ${sizeKB}KB (${savings}% compressible).\n📦 Cached hologram available: Read resource \`${holoUri}\` for prompt-cached structural view.\n💡 Other options: (1) afd_read with startLine/endLine for specific sections, (2) afd_read_raw for complete source.\nTotal lines: ${source.split("\n").length}\n\n`;
         mcpResponse(id, {
-          content: [{ type: "text", text: header + result.hologram, cache_control: { type: "ephemeral" } }],
+          content: [{ type: "text", text: header + result.hologram }],
+        });
+      } catch (err: unknown) {
+        mcpError(id, -32603, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    if (toolName === "afd_read_raw") {
+      const file = args.file as string | undefined;
+      if (!file) { mcpError(id, -32602, "Missing required argument: file"); return; }
+      try {
+        const absPath = resolve(file);
+        _assertWs(absPath, ctx.ws.root);
+        const source = readFileSync(absPath, "utf-8");
+        const sizeKB = (source.length / 1024).toFixed(1);
+        const rawStart = args.startLine;
+        const rawEnd = args.endLine;
+        const startLine = typeof rawStart === "number" && Number.isFinite(rawStart) ? rawStart : undefined;
+        const endLine = typeof rawEnd === "number" && Number.isFinite(rawEnd) ? rawEnd : undefined;
+
+        let text: string;
+        if (startLine !== undefined && endLine !== undefined) {
+          const lines = source.split("\n");
+          const start = Math.max(1, Math.floor(startLine)) - 1;
+          const end = Math.min(lines.length, Math.floor(endLine));
+          const slice = lines.slice(start, end).map((l, i) => `${start + i + 1}\t${l}`).join("\n");
+          text = `// [afd-raw] ${file} lines ${start + 1}-${end} (${sizeKB}KB total) — full content, no compression\n${slice}`;
+        } else {
+          text = `// [afd-raw] ${file} (${sizeKB}KB) — full content, no compression\n${source}`;
+        }
+
+        ctx.persistHologramStats(source.length, source.length);
+        ctx.persistCtxSavings('raw_read', source.length, 0);
+        mcpResponse(id, {
+          content: [{ type: "text", text }],
         });
       } catch (err: unknown) {
         mcpError(id, -32603, err instanceof Error ? err.message : String(err));
@@ -416,7 +502,7 @@ async function handleMcpRequest(ctx: DaemonContext, req: { id?: unknown; method?
           limit: typeof args.limit === "number" ? args.limit : undefined,
         });
         mcpResponse(id, {
-          content: [{ type: "text", text: JSON.stringify(suggestions, null, 2), cache_control: { type: "ephemeral" } }],
+          content: [{ type: "text", text: JSON.stringify(suggestions, null, 2) }],
         });
       } catch (err: unknown) {
         mcpError(id, -32603, err instanceof Error ? err.message : String(err));

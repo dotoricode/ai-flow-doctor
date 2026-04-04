@@ -250,6 +250,26 @@
 - [x] JSX 노드 구조 대응: `jsx_self_closing_element`/`jsx_opening_element`의 `child(1)` 태그명 추출
 - [x] call-graph 및 hologram 디스패처 모두 `resolveGrammar()` 경유
 
+#### Smart Interceptor (Phase C: Automation)
+- [x] `afd_read` 10KB 임계치 자동 홀로그램 반환 (27KB → 921자, 97% 압축)
+- [x] `afd_read_raw` 폴백 도구 신설 — 전체 본문 필요 시 명시적 호출
+- [x] 홀로그램 가이드 메시지에 `afd_read_raw` 옵션 동적 안내
+- [x] `tools/call` 응답의 무의미한 `cache_control` 헤더 전면 제거
+- [x] 정직한 메트릭: raw_read는 절약=0으로 기록
+
+#### True Caching (Phase A: MCP Resource)
+- [x] `afd://hologram/{path}` MCP 리소스 신설 — `resources/read`로 프롬프트 캐싱 활성화
+- [x] `cache_control: { type: "ephemeral" }` 리소스 응답에만 적용 (tool 응답 제거)
+- [x] `afd_read` 대용량 파일 → 리소스 URI 안내 + 인라인 홀로그램 폴백
+- [x] `afd_hologram` 도구 설명에 리소스 우선 사용 안내 추가
+- [x] `_knownHologramPaths` 동적 URI 추적 + `list_changed` 알림
+
+#### Honest Metrics (Phase B: Token Estimator)
+- [x] `src/core/token-estimator.ts` — 콘텐츠 인식 토큰 추정 엔진 (12개 확장자)
+- [x] `chars ÷ 4` 허구 공식 전면 폐기 → 확장자별 보수적 비율 (3.0~4.2)
+- [x] `server.ts` + `http-routes.ts` 메트릭 계산 교체
+- [x] 신뢰도 라벨 `confidence: 'heuristic'` 도입
+
 #### Bug Fixes (N-Depth Validation Sprint)
 - [x] `extractSignature` substring 매칭 버그 — `Button` 검색 시 `ButtonProps` 오매칭 수정
 - [x] JSX 컴포넌트 미탐지 — `<Button />`, `<Input />` call graph에서 누락되던 문제 해결

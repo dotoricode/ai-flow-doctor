@@ -33,6 +33,7 @@ import { createHttpHandler } from "./http-routes";
 import { assertInsideWorkspace } from "./guards";
 import { registerMesh, deregisterMesh } from "./mesh";
 import { subscriptionManager } from "./mcp-subscriptions";
+import { estimateTokenSavings } from "../core/token-estimator";
 
 // ── State ──
 const state: DaemonState = {
@@ -175,7 +176,7 @@ export function main(options: DaemonOptions = {}) {
     "SELECT type, total_requests, total_original_chars, total_saved_chars FROM ctx_savings_lifetime"
   );
 
-  function persistCtxSavings(type: 'wsmap' | 'pinpoint', originalChars: number, savedChars: number) {
+  function persistCtxSavings(type: 'wsmap' | 'pinpoint' | 'raw_read', originalChars: number, savedChars: number) {
     if (savedChars <= 0) return;
     try {
       upsertCtxDaily.run(today(), type, originalChars, savedChars);
@@ -244,7 +245,7 @@ export function main(options: DaemonOptions = {}) {
   function persistHologramStats(originalChars: number, hologramChars: number) {
     state.hologramStats.totalRequests++;
     state.hologramStats.totalOriginalChars += originalChars;
-    state.totalSavedTokens += Math.max(0, Math.floor((originalChars - hologramChars) / 4));
+    state.totalSavedTokens += estimateTokenSavings(originalChars, hologramChars);
     state.hologramStats.totalHologramChars += hologramChars;
     state.hologramStats.sessionOriginalChars += originalChars;
     state.hologramStats.sessionHologramChars += hologramChars;
