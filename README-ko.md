@@ -6,8 +6,8 @@
 <p align="center"><strong>자가 치유 환경 + 토큰 84% 절감. AI가 파일을 날려먹어도 184ms 안에 원상복구.</strong></p>
 
 <p align="center">
-  <video src="demo.mp4" width="850" autoplay loop muted playsinline>
-    <a href="demo.mp4">▶ 데모 보기</a>
+  <video src="https://github.com/user-attachments/assets/665788f7-183e-4c61-8388-0dc005966d71" width="850" autoplay loop muted playsinline>
+    <a href="https://github.com/user-attachments/assets/665788f7-183e-4c61-8388-0dc005966d71">▶ 데모 보기</a>
   </video>
 </p>
 

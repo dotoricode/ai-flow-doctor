@@ -6,8 +6,8 @@
 <p align="center"><strong>Self-healing environments + 97% token compression. Your AI breaks things — afd fixes them in 184ms.</strong></p>
 
 <p align="center">
-  <video src="demo.mp4" width="850" autoplay loop muted playsinline>
-    <a href="demo.mp4">▶ Watch demo</a>
+  <video src="https://github.com/user-attachments/assets/665788f7-183e-4c61-8388-0dc005966d71" width="850" autoplay loop muted playsinline>
+    <a href="https://github.com/user-attachments/assets/665788f7-183e-4c61-8388-0dc005966d71">▶ Watch demo</a>
   </video>
 </p>
 
