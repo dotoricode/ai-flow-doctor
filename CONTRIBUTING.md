@@ -23,8 +23,8 @@ If you are contributing toward v2 or v3, please open a discussion issue first to
 **Prerequisites:** [Bun](https://bun.sh) >= 1.1.0
 
 ```bash
-git clone https://github.com/dotoricode/autonomous-flow-daemon
-cd autonomous-flow-daemon
+git clone https://github.com/dotoricode/afd
+cd afd
 bun install
 bun test          # all tests must be green before any PR
 ```

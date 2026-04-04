@@ -12,8 +12,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.0-blue?style=flat-square" alt="version" />
-  <a href="https://www.npmjs.com/package/autonomous-flow-daemon"><img src="https://img.shields.io/npm/v/autonomous-flow-daemon?style=flat-square&logo=npm&color=cb0000" alt="npm" /></a>
+  <img src="https://img.shields.io/badge/version-1.10.0-blue?style=flat-square" alt="version" />
+  <a href="https://www.npmjs.com/package/@dotoricode/afd"><img src="https://img.shields.io/npm/v/@dotoricode/afd?style=flat-square&logo=npm&color=cb0000" alt="npm" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
   <img src="https://img.shields.io/badge/built%20for-Claude%20Code-7c3aed?style=flat-square" alt="Claude Code" />
@@ -68,14 +68,17 @@ And every time it reads your codebase? Full source files pumped straight into th
 
 ---
 
-## What's New in v1.6.0
+## What's New in v1.9.3
 
 | Feature | What Changed |
 |:--------|:-------------|
-| **Tree-sitter AST Engine** | Replaced TypeScript compiler with tree-sitter — multilingual hologram support (TS/JS full, Python/Go/Rust fallback) |
-| **Real-time HUD ROI** | Status bar now shows live session token savings as you work |
-| **Event Batching** | 300ms debounce + dedup — no more event storms from rapid file changes |
-| **Hook Manager** | Multi-owner orchestration — afd coexists cleanly with other hook providers |
+| **npm Scoped Package** | Published as `@dotoricode/afd` — install via `npx @dotoricode/afd start` |
+| **N-Depth Reachability** | Cross-file call graph tracing (L2 direct, L3 transitive) via Tree-sitter AST |
+| **Barrel File Resolution** | `index.ts` re-export tracking — named & wildcard barrel exports fully resolved |
+| **TSX/JSX Parsing** | Grammar auto-selection for `.tsx`/`.jsx`, JSX component detection in call graphs |
+| **Real-time MCP Notifications** | Push-based `notifications/resources/updated` for live antibody/quarantine/event subscriptions |
+| **Token Dashboard** | `afd dashboard` — live TUI with daily savings, lifetime ROI, 7-day history |
+| **Go & Rust Hologram** | Full Tree-sitter AST support for Go structs/interfaces and Rust traits/impls |
 
 ---
 
@@ -175,6 +178,7 @@ graph LR
 | `afd evolution` | Analyze quarantined failures & generate prevention rules |
 | `afd mcp install` | Register afd as MCP server in project + global config |
 | `afd vaccine` | List, search, install, publish community antibodies |
+| `afd dashboard` | Live TUI — daily token savings, lifetime ROI, 7-day trend |
 | `afd lang` | Switch display language (`afd lang ko` / `afd lang en`) |
 
 ---

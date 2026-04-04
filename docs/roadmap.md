@@ -228,8 +228,38 @@
 
 ---
 
+## In Development
+
+### v2.0.0-dev — Deep Context Engine
+
+#### N-Depth Reachability (L2/L3 Cross-File Call Graph)
+- [x] `traceCallGraph()` — Tree-sitter AST 기반 크로스 파일 심볼 추적 (L2 직접, L3 전이)
+- [x] `extractCalledSymbols()` — call_expression + type_identifier + JSX element 탐지
+- [x] `extractSignature()` — 단어 경계(`\b`) 매칭으로 정확한 심볼 시그니처 추출
+- [x] `[🔗 N-Depth Dependencies]` 섹션 렌더링 — 파일별 그룹핑 + depth 표기
+
+#### Barrel File Resolution
+- [x] `resolveBarrelExports()` — index.ts 배럴 파일 re-export 완벽 추적
+- [x] Named re-export (`export { X } from './module'`) 지원
+- [x] Wildcard re-export (`export * from './module'`) 지원 — 소스 파일 내 export 패턴 매칭
+- [x] 심볼 → 실제 소스 파일 매핑 후 de-duplicate
+
+#### TSX/JSX AST Parsing Stabilization
+- [x] `grammar-resolver.ts` — `.tsx`/`.jsx` 확장자에 `tsx` WASM 문법 자동 선택
+- [x] `engine.ts` — `GRAMMAR_PACKAGE_MAP`으로 tsx WASM 경로 해석 (`tree-sitter-typescript` 패키지 내)
+- [x] JSX 노드 구조 대응: `jsx_self_closing_element`/`jsx_opening_element`의 `child(1)` 태그명 추출
+- [x] call-graph 및 hologram 디스패처 모두 `resolveGrammar()` 경유
+
+#### Bug Fixes (N-Depth Validation Sprint)
+- [x] `extractSignature` substring 매칭 버그 — `Button` 검색 시 `ButtonProps` 오매칭 수정
+- [x] JSX 컴포넌트 미탐지 — `<Button />`, `<Input />` call graph에서 누락되던 문제 해결
+- [x] `.ts` 파일 TSX 파싱 실패 — tsx 문법 미적용으로 JSX 노드 인식 불가 수정
+
+---
+
 ## Future
 
-### Future Phases (Unscheduled)
-
-- **Dashboard UI:** Web-based real-time antibody + mistake_history viewer
+### v2.x — Next Targets
+- [ ] **Web Dashboard UI:** real-time antibody + mistake_history viewer (browser-based)
+- [ ] **Python/Go/Rust N-Depth:** 비-TypeScript 언어에 대한 cross-file call graph 확장
+- [ ] **L3 Transitive Tracing:** 3-depth 전이 추적 실전 검증 및 성능 최적화
