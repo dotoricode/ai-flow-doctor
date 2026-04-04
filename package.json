@@ -1,6 +1,6 @@
 {
   "name": "@dotoricode/afd",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Zero-config immunity for AI coding workflows. Self-heals broken configs in < 270ms.",
   "type": "module",
   "bin": {
