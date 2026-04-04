@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.10.0-blue?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="version" />
   <a href="https://www.npmjs.com/package/@dotoricode/afd"><img src="https://img.shields.io/npm/v/@dotoricode/afd?style=flat-square&logo=npm&color=cb0000" alt="npm" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
@@ -22,6 +22,20 @@
 <p align="center">
   <a href="README.md">English</a>
 </p>
+
+---
+
+## v2.0.0 — "Deep Context Engine"
+
+| 기능 | 변경 |
+|:-----|:-----|
+| **Deep Context Engine** | 4개 언어 AST 파싱 (TS, Python, Go, Rust) + L2/L3 크로스파일 콜 그래프 |
+| **True Caching** | `afd://hologram/{path}` MCP 리소스 — Anthropic 프롬프트 캐싱 |
+| **Web Dashboard** | `afd web` — 브라우저에서 토큰 절약 현황을 실시간 확인 |
+| **Smart Interceptor** | `afd_read` 10KB 초과 파일 자동 압축 (97%), `afd_read_raw` 폴백 |
+| **Honest Metrics** | 콘텐츠 인식 토큰 추정 (12개 확장자), `chars÷4` 공식 폐기 |
+| **고정 포트** | `localhost:51831` 기본 바인딩 — 북마크 안정화 |
+| **데몬 워치독** | `daemonRequest()` 3회 재시도 — 일시적 장애 자동 복구 |
 
 ---
 
@@ -179,6 +193,8 @@ graph LR
 | `afd mcp install` | 프로젝트 + 글로벌 설정에 MCP 서버 등록 |
 | `afd vaccine` | 커뮤니티 항체 목록 조회, 검색, 설치, 배포 |
 | `afd dashboard` | 라이브 TUI — 일일 토큰 절약량, 누적 ROI, 7일 추이 |
+| `afd web` | 브라우저에서 웹 대시보드 열기 (`localhost:51831/dashboard`) |
+| `afd setup` | 대화형 원커맨드 설정 — 데몬, MCP, CLAUDE.md, 헬스체크 |
 | `afd lang` | 표시 언어 전환 (`afd lang ko` / `afd lang en`) |
 
 ---
@@ -230,8 +246,9 @@ afd evolution
 
 | MCP 도구 | 역할 |
 |:---------|:-----|
-| `afd_read` | 스마트 파일 리더 — 소용량 원본, 대용량 자동 홀로그램, 라인 범위 지원 |
-| `afd_hologram` | TS/JS 파일의 토큰 효율적인 타입 스켈레톤 (80%+ 절약) |
+| `afd_read` | 스마트 파일 리더 — 10KB 미만 원본, 10KB 이상 자동 홀로그램, 라인 범위 지원 |
+| `afd_read_raw` | 전체 본문 폴백 리더 — 홀로그램 대신 원본이 필요할 때 명시적 호출 |
+| `afd_hologram` | TS/JS/Python/Go/Rust 파일의 토큰 효율적인 타입 스켈레톤 (80%+ 절약) |
 | `afd_diagnose` | 증상 및 홀로그램 컨텍스트 포함 상태 진단 |
 | `afd_score` | 런타임 통계: 가동시간, 치유 횟수, 홀로그램 절약량 |
 

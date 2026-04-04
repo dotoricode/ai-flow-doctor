@@ -3,7 +3,7 @@
 </p>
 
 <h3 align="center">The Invisible Guardian for AI Agents</h3>
-<p align="center"><strong>Self-healing environments + 84% token savings. Your AI breaks things — afd fixes them in 184ms.</strong></p>
+<p align="center"><strong>Self-healing environments + 97% token compression. Your AI breaks things — afd fixes them in 184ms.</strong></p>
 
 <p align="center">
   <a href="https://github.com/dotoricode/autonomous-flow-daemon">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.10.0-blue?style=flat-square" alt="version" />
+  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="version" />
   <a href="https://www.npmjs.com/package/@dotoricode/afd"><img src="https://img.shields.io/npm/v/@dotoricode/afd?style=flat-square&logo=npm&color=cb0000" alt="npm" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT" />
@@ -32,7 +32,7 @@
 | AI deletes `.claudeignore` | **30 min** manual fix | **0.2s** auto-heal |
 | Hook file corrupted | Re-inject hooks, restart session | **Silent background repair** |
 | `git checkout` triggers 50 events | AI goes haywire | **Mass-event suppressor** |
-| AI reads 8 large files (114KB) | **~28,600 tokens** consumed | **~4,600 tokens** (84% saved) |
+| AI reads 8 large files (114KB) | **~28,600 tokens** consumed | **~860 tokens** via hologram (97% saved) |
 | Session token budget | Burns through context window | **~60,900 tokens saved per codebase scan** |
 
 > `< 0.1% CPU` | `~40MB RAM` | `< 270ms` full heal cycle | You never even see it happen.
@@ -68,17 +68,43 @@ And every time it reads your codebase? Full source files pumped straight into th
 
 ---
 
-## What's New in v1.9.3
+## What's New in v2.0.0 — "Deep Context Engine"
 
 | Feature | What Changed |
 |:--------|:-------------|
-| **npm Scoped Package** | Published as `@dotoricode/afd` — install via `npx @dotoricode/afd start` |
-| **N-Depth Reachability** | Cross-file call graph tracing (L2 direct, L3 transitive) via Tree-sitter AST |
-| **Barrel File Resolution** | `index.ts` re-export tracking — named & wildcard barrel exports fully resolved |
-| **TSX/JSX Parsing** | Grammar auto-selection for `.tsx`/`.jsx`, JSX component detection in call graphs |
-| **Real-time MCP Notifications** | Push-based `notifications/resources/updated` for live antibody/quarantine/event subscriptions |
-| **Token Dashboard** | `afd dashboard` — live TUI with daily savings, lifetime ROI, 7-day history |
-| **Go & Rust Hologram** | Full Tree-sitter AST support for Go structs/interfaces and Rust traits/impls |
+| **Deep Context Engine** | 4-language AST parsing (TS, Python, Go, Rust) with L2/L3 cross-file call graph |
+| **True Caching** | `afd://hologram/{path}` MCP resource — Anthropic prompt caching via `cache_control` |
+| **Web Dashboard** | `afd web` opens a glassmorphism-styled dashboard in your browser — single HTML, no CDN |
+| **Smart Interceptor** | `afd_read` auto-compresses files >10KB (97% savings), `afd_read_raw` as fallback |
+| **Honest Metrics** | Content-aware token estimator (12 extensions) replaces the old `chars÷4` formula |
+| **Fixed Port** | Daemon binds to `localhost:51831` — predictable address, no more random ports |
+| **Daemon Watchdog** | `daemonRequest()` retries 3× on transient failures — resilient to daemon restarts |
+
+### Web Dashboard Preview
+
+<!-- TODO: Replace with actual screenshot -->
+> `afd web` — Opens `http://localhost:51831/dashboard` in your default browser.
+>
+> **Overview tab**: Today's token savings, lifetime ROI breakdown, 7-day history, live SSE event stream.
+> **Context Compressor tab**: Browse any file in the project, view its hologram skeleton with syntax highlighting, explore N-Depth dependency trees.
+
+### How the Context Compressor Works
+
+```
+Original (27 KB, 624 lines)          Hologram (921 chars, 18 lines)
+┌──────────────────────────┐          ┌──────────────────────────┐
+│ import { resolve } from  │          │ import { resolve } from  │
+│ import { generateHolo... │          │ import { generateHolo... │
+│                          │   97%    │ function mcpResponse(     │
+│ function mcpResponse(    │ ──────>  │   id, result) {…}        │
+│   id: unknown, ...) {   │  saved   │ async function handle(    │
+│   // 50 lines of logic  │          │   ctx, req) {…}          │
+│ }                        │          │ export function start(    │
+│ // ... 600 more lines    │          │   ctx) {…}               │
+└──────────────────────────┘          └──────────────────────────┘
+```
+
+Function bodies are stripped, type signatures preserved. The AI gets the structure it needs without burning tokens on implementation details.
 
 ---
 
@@ -179,6 +205,7 @@ graph LR
 | `afd mcp install` | Register afd as MCP server in project + global config |
 | `afd vaccine` | List, search, install, publish community antibodies |
 | `afd dashboard` | Live TUI — daily token savings, lifetime ROI, 7-day trend |
+| `afd web` | Open web dashboard in default browser (`localhost:51831/dashboard`) |
 | `afd lang` | Switch display language (`afd lang ko` / `afd lang en`) |
 
 ---
@@ -226,18 +253,24 @@ Analyzes quarantined failures and writes prevention rules to `afd-lessons.md`. A
 
 ## MCP Setup
 
-`afd` provides four MCP tools and one resource:
+`afd` provides seven MCP tools and four resources:
 
 | MCP Tool | Purpose |
 |:---------|:--------|
-| `afd_read` | Smart file reader — raw for small files, auto-hologram for large, optional line ranges |
-| `afd_hologram` | Token-efficient type skeleton of any TS/JS file (80%+ savings) |
+| `afd_read` | Smart reader — <10KB raw, ≥10KB auto-hologram, line ranges, symbol extraction |
+| `afd_read_raw` | Full-text fallback — explicit uncompressed read when hologram is insufficient |
+| `afd_hologram` | Type skeleton generator (TS, JS, Python, Go, Rust) — prefer `afd://hologram` resource |
 | `afd_diagnose` | Health diagnosis with symptoms and hologram context |
 | `afd_score` | Runtime stats: uptime, heals, hologram savings |
+| `afd_suggest` | Surface high-frequency vulnerability patterns from mistake history |
+| `afd_fix` | Generate auto-validator scripts for known failure patterns |
 
 | MCP Resource | Purpose |
 |:-------------|:--------|
 | `afd://workspace-map` | Full file tree with export signatures in one call |
+| `afd://hologram/{path}` | Prompt-cached hologram — `cache_control: ephemeral` for Anthropic caching |
+| `afd://antibodies` | Live antibody list (subscribable, push notifications) |
+| `afd://events` | Real-time S.E.A.M event stream (subscribable) |
 
 ```bash
 afd mcp install    # Registers in .mcp.json + ~/.claude.json

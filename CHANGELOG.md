@@ -11,69 +11,68 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 > Language-agnostic immune system. Four languages. One dashboard. Zero config.
 
-This is afd's biggest release. The immune system now understands Python, Go, and Rust at the same depth as TypeScript. A full web dashboard ships in a single 18.7 KB HTML file — no CDN, no build step. Token estimation finally uses content-aware heuristics instead of the crude `chars ÷ 4` formula.
+afd 2.0은 AI 코딩 에이전트를 위한 자가 치유 환경의 완성판입니다. 면역 시스템이 TypeScript를 넘어 Python, Go, Rust까지 동일한 깊이로 이해하며, 크로스 파일 종속성을 3-depth까지 추적합니다. 프리미엄 웹 대시보드는 CDN도 빌드 도구도 없이 단일 HTML 파일 하나로 동작합니다. 토큰 절약은 더 이상 추정이 아닌 실측에 가까운 정직한 지표로 제공됩니다.
 
 ### Added
 
-#### N-Depth Cross-File Call Graph (TypeScript / Python / Go / Rust)
-- `traceCallGraph()` — AST-based cross-file symbol tracing to L2 (direct) and L3 (transitive)
-- `extractCalledSymbols()` — call_expression, type_identifier, JSX element detection per language
-- `extractSignature()` — word-boundary matching (`\b`) for accurate symbol extraction (no substring false-positives)
-- `grammar-resolver.ts` — `detectLang()` dispatches the correct Tree-sitter WASM per extension
-- Barrel file resolution: named + wildcard re-exports traced to their real source file
-- TSX/JSX AST stabilization: `tsx` grammar auto-selected for `.tsx`/`.jsx`, JSX tags extracted from `jsx_self_closing_element` / `jsx_opening_element`
+#### Deep Context Engine — 다국어 N-Depth 종속성 추적
+- **4개 언어 완전 지원**: TypeScript/JavaScript, Python, Go, Rust — Tree-sitter WASM 기반 AST 파싱
+- `traceCallGraph()` — 크로스 파일 심볼 추적 (L2 직접 참조, L3 전이 참조)
+- `extractCalledSymbols()` — call_expression, type_identifier, JSX element 탐지 (언어별 분기)
+- `extractSignature()` — 단어 경계(`\b`) 매칭으로 `Button` ≠ `ButtonProps` 오매칭 근절
+- `grammar-resolver.ts` — 확장자 기반 WASM 문법 자동 선택, TSX/JSX 완벽 대응
+- 배럴 파일(index.ts) 해석: named + wildcard re-export를 실제 소스 파일까지 추적
 
-#### Smart Interceptor — `afd_read` Automation
-- Files > 10 KB → automatic hologram return (27 KB → 921 chars, 97% compression)
-- `afd_read_raw` new fallback tool — explicit full-body read when skeleton is insufficient
-- Guide message dynamically surfaces `startLine`/`endLine` and `afd_read_raw` options
-- `tools/call` responses: `cache_control` removed entirely (resource responses retain it)
+#### True Caching — Anthropic 프롬프트 캐싱 달성
+- `afd://hologram/{path}` MCP 리소스 신설 — `resources/read` 응답에 `cache_control: { type: "ephemeral" }` 적용
+- 동일 파일 재조회 시 Anthropic 서버가 캐시된 홀로그램을 재사용 → **실제 API 비용 절감**
+- `tools/call` 응답의 무의미한 `cache_control` 전면 제거 — 리소스 응답에서만 유효하게 적용
+- `_knownHologramPaths` 동적 URI 추적 + `notifications/resources/list_changed` 자동 발송
 
-#### True Caching — `afd://hologram/{path}` MCP Resource
-- New MCP resource with `cache_control: { type: "ephemeral" }` for Anthropic prompt caching
-- `_knownHologramPaths` dynamic URI tracking + `list_changed` notification on new files
-- `afd_hologram` and `afd_read` tool descriptions updated to prefer resource reads
+#### Smart Interceptor — 자동 토큰 절약
+- `afd_read` 10KB 초과 파일 → 홀로그램 자동 반환 (97% 압축, 27KB → 921자)
+- `afd_read_raw` 폴백 도구 신설 — 전체 본문이 정말 필요할 때만 명시적 호출
+- 가이드 메시지가 `startLine/endLine`, `afd_read_raw`, `afd://hologram` 리소스 세 가지 옵션을 동적 안내
 
-#### Honest Token Metrics
-- `src/core/token-estimator.ts` — content-aware estimation engine covering 12 file extensions
-- Extension-specific conservative ratios (3.0–4.2) replace the discredited `chars ÷ 4` formula
-- `confidence: 'heuristic'` label surfaced in metrics output
+#### Honest Metrics — 정직한 토큰 추정 엔진
+- `src/core/token-estimator.ts` — 12개 확장자별 보수적 chars/token 비율 (3.0~4.2)
+- `chars ÷ 4` 허구 공식 완전 폐기 → 콘텐츠 인식 휴리스틱으로 교체
+- `confidence: 'heuristic'` 신뢰도 라벨 도입 — 대시보드 수치의 근거를 투명하게 공개
+- HTTP 엔드포인트(`/mini-status`, `/score`, `/shift-summary`)가 매 요청마다 DB에서 fresh하게 읽도록 수정 — MCP ↔ HTTP 프로세스 격리로 인한 메트릭 정체 현상 해소
 
-#### Web Dashboard (`GET /dashboard`)
-- **18.7 KB single-file HTML** — fully self-contained, zero external dependencies
-- **Tab 1 – Overview**: today's token savings (dual bar chart), lifetime ROI breakdown, 7-day history grid, immune system event log, live SSE event stream
-- **Tab 2 – Hologram Explorer**: file tree search, syntax-highlighted skeleton viewer, N-Depth dependency tree rendering
-- **i18n**: server-side injection of `window.T` (26 translation keys, ko/en auto-detected via `getSystemLanguage()`)
-- **Syntax highlight**: regex-lite engine covering TypeScript, Python, Go, Rust — no runtime deps
-- **Glassmorphism UI**: CSS variable system, `backdrop-filter`, GitHub Dark palette
-- **Large-project safe**: `/files` API hard-capped at 500 files, depth ≤ 4
+#### Premium Web Dashboard
+- **단일 HTML 파일** — 외부 CDN 없이 완전 독립 동작
+- **Tab 1 – Overview**: 오늘의 절약량 이중 바 차트, 누적 ROI 내역, 7일 히스토리 그리드, 면역 이벤트 로그, SSE 실시간 스트림
+- **Tab 2 – Hologram Explorer**: 파일 트리 검색, 구문 강조 스켈레톤 뷰어, N-Depth 종속성 트리 렌더링
+- **i18n**: 서버 사이드 `window.T` 주입 (26개 번역 키, ko/en 자동 감지)
+- **구문 강조**: TypeScript, Python, Go, Rust 4개 언어 regex-lite 엔진 (런타임 의존 없음)
+- **글래스모피즘 UI**: CSS variable 시스템, `backdrop-filter`, GitHub Dark 팔레트
+- **대형 프로젝트 안전**: `/files` API 500파일 하드캡 + depth ≤ 4
 
-#### Polyglot N-Depth — Python / Go / Rust
-- Python: `from X import Y` + `__init__.py` package resolution, dotted module paths
-- Go: `import "./pkg"` + package directory scanning, exported symbol matching (capitalized identifiers)
-- Rust: `use crate::X` + `mod.rs` convention, `super::`/`crate::` path resolution
-
-#### Developer Experience
-- **`afd setup`** — interactive one-command project configuration
-  - Y/n per step: daemon start → MCP register → CLAUDE.md inject → health check
-  - CLAUDE.md block teaches Claude to prefer `afd_read` / `afd_hologram` / `workspace-map`
-  - Bilingual (EN/KO), idempotent (auto-skips already-configured steps)
-- **`@dotoricode/afd`** npm scoped package — `npx @dotoricode/afd setup` works everywhere
+#### Zero-Friction DX — 마찰 없는 개발자 경험
+- **`afd web`** — OS 기본 브라우저로 대시보드 자동 오픈 (1초 데몬 대기 → 즉시 오픈)
+- **고정 포트 51831** — 매번 달라지던 포트 대신 예측 가능한 고정 주소 (`localhost:51831/dashboard`)
+- **데몬 워치독** — `daemonRequest()` 3회 재시도 (1초 간격), 일시적 데몬 재시작에도 연결 안정
+- **`afd setup`** — 대화형 원커맨드 설정 (Y/n 4단계: 데몬 → MCP → CLAUDE.md → 헬스체크)
+- **`@dotoricode/afd`** npm 스코프 패키지 — `npx @dotoricode/afd setup` 어디서든 즉시 실행
 
 ### Fixed
 
-- `extractSignature` substring match bug — searching `Button` no longer matches `ButtonProps`
-- JSX component miss in call graph — `<Button />`, `<Input />` are now detected
-- `.ts` files failing TSX parse — `tsx` grammar now applied to all `.ts`/`.tsx`
-- MCP install on Windows — `cmd /c npx` wrapper for Claude Code compatibility
-- Hook command fallback — `bunx`/`npx` now invokes `@dotoricode/afd` (not bare `afd`)
-- `rule-suggestion` test timeout — disk SQLite → in-memory + indexes (6.85s → 245ms)
+- `extractSignature` substring 오매칭 — `Button` 검색 시 `ButtonProps` 미끼 결과 제거
+- JSX 컴포넌트 미탐지 — `<Button />`, `<Input />` call graph 정상 추적
+- `.ts` 파일 TSX 파싱 실패 — `tsx` WASM 문법 자동 적용
+- Windows MCP 설치 — `cmd /c npx` 래퍼로 Claude Code 호환성 확보
+- Hook command 폴백 — `bunx`/`npx`가 `@dotoricode/afd`를 정확히 호출
+- `rule-suggestion` 테스트 타임아웃 — 디스크 SQLite → 인메모리 + 인덱스 (6.85s → 245ms)
+- `afd setup` 데몬 체크 — `isDaemonAlive()` `await` 누락 + 인자 미전달로 항상 truthy 반환, 데몬 시작 건너뜀
+- 메트릭 정체 — HTTP 데몬이 인메모리 캐시 대신 매번 DB에서 읽도록 수정 (MCP 프로세스 격리 문제)
 
 ### Meta
 
-- **217/217 tests passing** (zero-defect)
-- Package: 147.8 KB tarball, 77 files
-- Dashboard: 18.7 KB single HTML (Phase 1–3 complete)
+- **217/217 tests passing** — zero-defect
+- **151.5 KB** tarball, 77 files
+- **고정 포트** 51831 (OS 할당 폴백)
+- **대시보드** 단일 HTML (Phase 1–3 complete)
 
 ---
 

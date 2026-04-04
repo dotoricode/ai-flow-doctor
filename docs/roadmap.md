@@ -280,9 +280,8 @@
 
 ## Future
 
-### v2.x — Next Targets
-- [ ] **`afd dashboard --web` CLI flag**: browser auto-launch from terminal command
+### v2.1.0 — Next Targets
 - [ ] **L3 Transitive Tracing**: 3-depth 전이 추적 실전 검증 및 성능 최적화
 - [ ] **Python/Go/Rust N-Depth 실전 검증**: 대형 오픈소스 프로젝트 cross-file call graph 정확도 측정
 - [ ] **Dashboard Antibody Viewer**: `afd://antibodies` MCP 리소스와 대시보드 실시간 연동
-- [ ] **v2.0.0-dev.2 퍼블리시**: npm 정식 배포
+- [ ] **Dashboard Dark/Light Mode**: 토글 버튼으로 다크/라이트 전환 (구현 완료, 다음 릴리즈에 포함)
