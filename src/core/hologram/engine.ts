@@ -55,17 +55,23 @@ export class TreeSitterEngine {
   }
 }
 
+/** Map grammar names to their host package (when different from tree-sitter-{name}) */
+const GRAMMAR_PACKAGE_MAP: Record<string, string> = {
+  tsx: "tree-sitter-typescript", // tsx WASM lives inside tree-sitter-typescript
+};
+
 /** Resolve WASM file path from installed npm grammar package */
 function resolveGrammarWasm(grammarName: string): string {
   // Grammar packages: tree-sitter-typescript, tree-sitter-python, etc.
   // WASM file is at package root: node_modules/tree-sitter-{name}/tree-sitter-{name}.wasm
-  const packageName = `tree-sitter-${grammarName}`;
+  const wasmFileName = `tree-sitter-${grammarName}`;
+  const packageName = GRAMMAR_PACKAGE_MAP[grammarName] ?? wasmFileName;
   try {
     // require.resolve returns bindings/node/index.js — walk up to package root
     const pkgJson = require.resolve(`${packageName}/package.json`);
-    return resolve(dirname(pkgJson), `${packageName}.wasm`);
+    return resolve(dirname(pkgJson), `${wasmFileName}.wasm`);
   } catch {
     // Fallback: try direct node_modules path
-    return resolve(process.cwd(), "node_modules", packageName, `${packageName}.wasm`);
+    return resolve(process.cwd(), "node_modules", packageName, `${wasmFileName}.wasm`);
   }
 }

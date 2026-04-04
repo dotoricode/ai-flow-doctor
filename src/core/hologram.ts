@@ -14,6 +14,7 @@ import { fallbackL0 } from "./hologram/fallback";
 import { generateIncrementalHologram, setCachedHologram } from "./hologram/incremental";
 import { traceCallGraph } from "./hologram/call-graph";
 import type { HologramResult, HologramOptions, LanguageExtractor } from "./hologram/types";
+import { resolveGrammar } from "./hologram/grammar-resolver";
 
 // Re-export types for backward compatibility
 export type { HologramResult, HologramOptions } from "./hologram/types";
@@ -48,7 +49,8 @@ export async function generateHologram(
 
   try {
     const engine = await TreeSitterEngine.getInstance();
-    const tree = await engine.parse(source, extractor.grammarName);
+    const grammar = resolveGrammar(filePath, extractor.grammarName);
+    const tree = await engine.parse(source, grammar);
     const lines = extractor.extract(tree, source, options);
     tree.delete();
 

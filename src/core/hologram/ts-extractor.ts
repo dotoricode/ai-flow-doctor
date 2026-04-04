@@ -338,7 +338,7 @@ function extractTopLevel(node: Node, source: string): string | null {
 
 export const tsExtractor: LanguageExtractor = {
   extensions: ["ts", "tsx", "js", "jsx", "mts", "cts"],
-  grammarName: "typescript",
+  grammarName: "typescript", // base grammar; tsx files use resolveGrammar() override
 
   extract(tree: Tree, source: string, options?: HologramOptions): string[] {
     const rootChildren = tree.rootNode.namedChildren;
