@@ -83,7 +83,7 @@ And every time it reads your codebase? Full source files pumped straight into th
 ### Web Dashboard
 
 <p align="center">
-  <img src="dashboard.png" width="850" alt="afd dashboard — 5-day usage: 1.4M tokens saved, 83% compression" style="border-radius: 12px;">
+  <img src="https://github.com/user-attachments/assets/f702893a-d9a8-4760-acfa-b4cbd188c5f7" width="850" alt="afd dashboard — 5-day usage: 1.4M tokens saved, 83% compression" style="border-radius: 12px;">
 </p>
 
 > `afd web` — Opens `http://localhost:51831/dashboard` in your default browser.
