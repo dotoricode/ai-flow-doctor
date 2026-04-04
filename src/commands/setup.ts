@@ -139,8 +139,9 @@ export async function setupCommand(): Promise<void> {
   try {
     // Step 1: Start daemon
     if (await ask(rl, m.confirm(m.stepDaemon))) {
-      const { isDaemonAlive } = await import("../daemon/client");
-      if (isDaemonAlive()) {
+      const { getDaemonInfo, isDaemonAlive } = await import("../daemon/client");
+      const info = getDaemonInfo();
+      if (info && await isDaemonAlive(info)) {
         console.log(m.already(m.stepDaemon));
       } else {
         const { startCommand } = await import("./start");
