@@ -228,9 +228,11 @@
 
 ---
 
-## In Development
+## Released (continued)
 
-### v2.0.0-dev — Deep Context Engine
+### v2.0.0 — Deep Context Engine + Web Dashboard ✅
+
+> Language-agnostic immune system. Four languages. One dashboard. Zero config.
 
 #### N-Depth Reachability (L2/L3 Cross-File Call Graph)
 - [x] `traceCallGraph()` — Tree-sitter AST 기반 크로스 파일 심볼 추적 (L2 직접, L3 전이)
@@ -240,46 +242,47 @@
 
 #### Barrel File Resolution
 - [x] `resolveBarrelExports()` — index.ts 배럴 파일 re-export 완벽 추적
-- [x] Named re-export (`export { X } from './module'`) 지원
-- [x] Wildcard re-export (`export * from './module'`) 지원 — 소스 파일 내 export 패턴 매칭
-- [x] 심볼 → 실제 소스 파일 매핑 후 de-duplicate
+- [x] Named / Wildcard re-export 지원
+- [x] 심볼 → 실제 소스 파일 매핑 + de-duplicate
 
 #### TSX/JSX AST Parsing Stabilization
 - [x] `grammar-resolver.ts` — `.tsx`/`.jsx` 확장자에 `tsx` WASM 문법 자동 선택
-- [x] `engine.ts` — `GRAMMAR_PACKAGE_MAP`으로 tsx WASM 경로 해석 (`tree-sitter-typescript` 패키지 내)
-- [x] JSX 노드 구조 대응: `jsx_self_closing_element`/`jsx_opening_element`의 `child(1)` 태그명 추출
-- [x] call-graph 및 hologram 디스패처 모두 `resolveGrammar()` 경유
+- [x] JSX 노드 구조 대응: `jsx_self_closing_element`/`jsx_opening_element` 태그명 추출
 
 #### Smart Interceptor (Phase C: Automation)
 - [x] `afd_read` 10KB 임계치 자동 홀로그램 반환 (27KB → 921자, 97% 압축)
 - [x] `afd_read_raw` 폴백 도구 신설 — 전체 본문 필요 시 명시적 호출
-- [x] 홀로그램 가이드 메시지에 `afd_read_raw` 옵션 동적 안내
-- [x] `tools/call` 응답의 무의미한 `cache_control` 헤더 전면 제거
-- [x] 정직한 메트릭: raw_read는 절약=0으로 기록
+- [x] `tools/call` 응답에서 `cache_control` 전면 제거 (resource 응답만 유지)
 
 #### True Caching (Phase A: MCP Resource)
-- [x] `afd://hologram/{path}` MCP 리소스 신설 — `resources/read`로 프롬프트 캐싱 활성화
-- [x] `cache_control: { type: "ephemeral" }` 리소스 응답에만 적용 (tool 응답 제거)
-- [x] `afd_read` 대용량 파일 → 리소스 URI 안내 + 인라인 홀로그램 폴백
-- [x] `afd_hologram` 도구 설명에 리소스 우선 사용 안내 추가
+- [x] `afd://hologram/{path}` MCP 리소스 신설 — 프롬프트 캐싱 활성화
+- [x] `cache_control: { type: "ephemeral" }` 리소스 응답에만 적용
 - [x] `_knownHologramPaths` 동적 URI 추적 + `list_changed` 알림
 
 #### Honest Metrics (Phase B: Token Estimator)
 - [x] `src/core/token-estimator.ts` — 콘텐츠 인식 토큰 추정 엔진 (12개 확장자)
-- [x] `chars ÷ 4` 허구 공식 전면 폐기 → 확장자별 보수적 비율 (3.0~4.2)
-- [x] `server.ts` + `http-routes.ts` 메트릭 계산 교체
+- [x] `chars ÷ 4` 허구 공식 폐기 → 확장자별 보수적 비율 (3.0~4.2)
 - [x] 신뢰도 라벨 `confidence: 'heuristic'` 도입
 
-#### Bug Fixes (N-Depth Validation Sprint)
+#### Web Dashboard (GET /dashboard)
+- [x] **18.7 KB single-file HTML** — 외부 CDN 의존 없는 완전 독립 대시보드
+- [x] Phase 1: 토큰 절약량, 7일 히스토리, 면역 이벤트, SSE 실시간 스트림
+- [x] Phase 2: Hologram Explorer (파일 탐색 + N-Depth 트리 렌더링)
+- [x] Phase 3: i18n 서버 주입 (ko/en 26키), 구문 강조 (4개 언어), 글래스모피즘 UI
+- [x] `/files` API: 500파일 하드캡 + depth 4 제한 — 초대형 프로젝트 safe
+
+#### Bug Fixes
 - [x] `extractSignature` substring 매칭 버그 — `Button` 검색 시 `ButtonProps` 오매칭 수정
-- [x] JSX 컴포넌트 미탐지 — `<Button />`, `<Input />` call graph에서 누락되던 문제 해결
-- [x] `.ts` 파일 TSX 파싱 실패 — tsx 문법 미적용으로 JSX 노드 인식 불가 수정
+- [x] JSX 컴포넌트 미탐지 — `<Button />`, `<Input />` call graph에서 누락 수정
+- [x] `.ts` 파일 TSX 파싱 실패 수정
 
 ---
 
 ## Future
 
 ### v2.x — Next Targets
-- [ ] **Web Dashboard UI:** real-time antibody + mistake_history viewer (browser-based)
-- [ ] **Python/Go/Rust N-Depth:** 비-TypeScript 언어에 대한 cross-file call graph 확장
-- [ ] **L3 Transitive Tracing:** 3-depth 전이 추적 실전 검증 및 성능 최적화
+- [ ] **`afd dashboard --web` CLI flag**: browser auto-launch from terminal command
+- [ ] **L3 Transitive Tracing**: 3-depth 전이 추적 실전 검증 및 성능 최적화
+- [ ] **Python/Go/Rust N-Depth 실전 검증**: 대형 오픈소스 프로젝트 cross-file call graph 정확도 측정
+- [ ] **Dashboard Antibody Viewer**: `afd://antibodies` MCP 리소스와 대시보드 실시간 연동
+- [ ] **v2.0.0-dev.2 퍼블리시**: npm 정식 배포

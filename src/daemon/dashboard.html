@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>afd dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--card:rgba(22,27,34,.85);--border:#30363d;--text:#e6edf3;--dim:#8b949e;--green:#3fb950;--yellow:#d29922;--red:#f85149;--cyan:#58a6ff;--bar-bg:#21262d;--code-bg:#0d1117;--glow:rgba(88,166,255,.15);--sk-kw:#ff7b72;--sk-fn:#d2a8ff;--sk-str:#a5d6ff;--sk-type:#79c0ff;--sk-cmt:#8b949e}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--card);backdrop-filter:blur(8px)}
+header h1{font-size:18px;font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
+.badge.live{background:#23842a;color:#fff;box-shadow:0 0 8px rgba(63,185,80,.4)}.badge.off{background:#6e4014;color:#fff}
+.meta{color:var(--dim);font-size:12px}
+nav{display:flex;gap:4px;padding:8px 20px;background:var(--card);border-bottom:1px solid var(--border);backdrop-filter:blur(8px)}
+nav button{background:none;border:1px solid var(--border);color:var(--dim);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:all .2s}
+nav button.active{background:var(--cyan);color:#000;border-color:var(--cyan);font-weight:600}
+nav button:hover{border-color:var(--cyan)}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.tab{display:none;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}.tab.active{display:block;opacity:1;transform:translateY(0)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;backdrop-filter:blur(4px);transition:border-color .2s}
+.card:hover{border-color:#484f58}
+.card h2{font-size:13px;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.card.wide{grid-column:1/-1}
+.bar-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
+.bar-label{width:56px;text-align:right;color:var(--dim);flex-shrink:0}
+.bar-track{flex:1;height:16px;background:var(--bar-bg);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.bar-fill.green{background:var(--green)}.bar-fill.yellow{background:var(--yellow)}.bar-fill.dim{background:var(--dim)}
+.bar-val{width:80px;font-size:12px;color:var(--dim);flex-shrink:0}
+.big-num{font-size:28px;font-weight:700;color:var(--green)}
+.sub{font-size:12px;color:var(--dim)}
+.row-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px}
+.row-item:last-child{border:none}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px}
+.tag.sense{background:#1f3a5f;color:var(--cyan)}.tag.extract{background:#2d3a1f;color:#7ee787}
+.tag.adapt{background:#3a2f1f;color:var(--yellow)}.tag.mutate{background:#3a1f1f;color:var(--red)}
+.tag.l2{background:#1a3a2a;color:var(--green)}.tag.l3{background:#3a2a1a;color:var(--yellow)}
+#events-log{max-height:200px;overflow-y:auto;font-family:"Cascadia Code",Consolas,monospace;font-size:12px}
+#events-log div{padding:2px 0;border-bottom:1px solid #21262d}
+.empty{color:var(--dim);font-style:italic;font-size:13px;text-align:center;padding:20px 0}
+.explorer{display:grid;grid-template-columns:240px 1fr;gap:12px;min-height:400px}
+@media(max-width:700px){.explorer{grid-template-columns:1fr}}
+#file-list{max-height:500px;overflow-y:auto;font-size:12px}
+#file-list input{width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;margin-bottom:8px;font-size:12px;transition:border-color .2s}
+#file-list input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px var(--glow)}
+.fitem{padding:4px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent;transition:all .15s}
+.fitem:hover{background:var(--bar-bg);border-color:#484f58}
+.fitem.active{background:rgba(88,166,255,.12);border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 6px var(--glow)}
+.fitem .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
+.dot.ts{background:#3178c6}.dot.py{background:#3572a5}.dot.go{background:#00add8}.dot.rs{background:#dea584}.dot.json{background:#f1e05a}.dot.md{background:#083fa1}.dot.other{background:var(--dim)}
+#holo-view{font-family:"Cascadia Code",Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow:auto;max-height:500px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:12px}
+#holo-meta{margin-bottom:8px;font-size:12px;color:var(--dim)}
+.dep-section{margin-top:12px;padding-top:8px;border-top:1px solid var(--border)}
+.dep-section h3{font-size:12px;color:var(--cyan);margin-bottom:6px}
+.dep-item{padding:3px 0;font-size:12px;cursor:pointer;font-family:"Cascadia Code",Consolas,monospace;transition:color .15s}
+.dep-item:hover{color:var(--cyan)}
+.dep-file{color:var(--dim);font-size:11px;margin-top:6px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:200px;color:var(--dim)}
+.empty-icon{font-size:48px;margin-bottom:12px;opacity:.3}
+footer{text-align:center;padding:10px;color:var(--dim);font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <h1>afd</h1>
+    <span id="status-badge" class="badge off">CONNECTING</span>
+  </div>
+  <div class="meta">
+    <span id="hdr-uptime">--</span> &middot;
+    <span id="hdr-ecosystem">--</span> &middot;
+    <span id="hdr-port">--</span>
+  </div>
+</header>
+<nav>
+  <button class="active" onclick="switchTab('overview',this)" id="btn-overview"></button>
+  <button onclick="switchTab('explorer',this)" id="btn-explorer"></button>
+</nav>
+
+<main>
+<div id="tab-overview" class="tab active">
+<div class="grid">
+  <div class="card"><h2 id="h-today"></h2><div id="today-content"></div></div>
+  <div class="card"><h2 id="h-lifetime"></h2><div id="lifetime-content"></div></div>
+  <div class="card wide"><h2 id="h-history"></h2><div id="history-content"></div></div>
+  <div class="card"><h2 id="h-immune"></h2><div id="immune-content"></div></div>
+  <div class="card"><h2 id="h-events"></h2><div id="events-log"></div></div>
+</div>
+</div>
+<div id="tab-explorer" class="tab">
+<div class="explorer">
+  <div class="card"><h2 id="h-files"></h2><div id="file-list"><input id="file-search" oninput="filterFiles()"><div id="file-entries"></div></div></div>
+  <div class="card"><h2 id="h-hologram"></h2><div id="holo-meta"></div><div id="holo-view"></div><div id="ndepth-panel"></div></div>
+</div>
+</div>
+</main>
+<footer>afd web dashboard &middot; <span id="ft-updated">--</span></footer>
+
+<script>
+/*{{I18N}}*/
+if(!window.T)window.T={todaySavings:"Today's Savings",lifetimeRoi:"Lifetime ROI",weekHistory:"7-Day History",immune:"Immune System",liveEvents:"Live Events",files:"Files",hologram:"Hologram",original:"Original",actual:"Actual",saved:"Saved",antibodies:"Antibodies",autoHealed:"Auto-healed",massSkipped:"Mass events skipped",dormant:"Dormant transitions",estValue:"Est. Value",totalSaved:"Total Saved",wsmap:"W/S Map",pinpoint:"Pinpoint",noData:"Use afd_read or afd_hologram to start tracking",noHistory:"No daily history yet",searchFiles:"Search files...",selectFile:"Select a file to explore",loading:"Loading...",nDepthDeps:"N-Depth Dependencies",overview:"Overview",explorer:"Hologram Explorer",savePct:"saved",lang:"en"};
+const t=k=>T[k]||k;
+
+// Apply i18n to static elements
+document.getElementById('btn-overview').textContent=t('overview');
+document.getElementById('btn-explorer').textContent=t('explorer');
+document.getElementById('h-today').textContent=t('todaySavings');
+document.getElementById('h-lifetime').textContent=t('lifetimeRoi');
+document.getElementById('h-history').textContent=t('weekHistory');
+document.getElementById('h-immune').textContent=t('immune');
+document.getElementById('h-events').textContent=t('liveEvents');
+document.getElementById('h-files').textContent=t('files');
+document.getElementById('h-hologram').textContent=t('hologram');
+document.getElementById('file-search').placeholder=t('searchFiles');
+document.getElementById('holo-view').innerHTML=emptyState(t('selectFile'));
+document.getElementById('today-content').innerHTML='<span class="empty">'+t('loading')+'</span>';
+document.getElementById('lifetime-content').innerHTML='<span class="empty">--</span>';
+document.getElementById('history-content').innerHTML='<span class="empty">'+t('noHistory')+'</span>';
+document.getElementById('immune-content').innerHTML='<span class="empty">--</span>';
+document.getElementById('events-log').innerHTML='<span class="empty">'+t('loading')+'</span>';
+
+function emptyState(msg){return`<div class="empty-state"><div class="empty-icon">&loz;</div><div>${msg}</div></div>`}
+
+const CTP=3.5;
+const fk=c=>{const v=c/CTP;return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':Math.round(v)};
+const pct=(a,b)=>b>0?Math.round(a/b*100):0;
+function barRow(l,p,v,c='green'){return`<div class="bar-row"><span class="bar-label">${l}</span><div class="bar-track"><div class="bar-fill ${c}" style="width:${Math.min(100,p)}%"></div></div><span class="bar-val">${v}</span></div>`}
+
+function switchTab(id,btn){
+  document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active')});
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='explorer'&&!filesLoaded)loadFiles();
+}
+
+/* ── Syntax highlight (regex lite) ── */
+function highlight(code,lang){
+  const e=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const esc=e(code);
+  const kwSets={
+    typescript:/\b(import|export|from|function|const|let|var|class|interface|type|enum|async|await|return|if|else|extends|implements|new|this|typeof|void)\b/g,
+    python:/\b(import|from|def|class|return|if|else|elif|for|while|with|as|self|None|True|False|async|await|raise|try|except|yield)\b/g,
+    go:/\b(package|import|func|type|struct|interface|return|if|else|for|range|var|const|map|chan|go|defer|switch|case)\b/g,
+    rust:/\b(use|mod|pub|fn|struct|enum|impl|trait|let|mut|const|return|if|else|match|for|while|self|Self|where|async|await|crate|super)\b/g
+  };
+  const kw=kwSets[lang]||kwSets.typescript;
+  return esc
+    .replace(/(\/\/[^\n]*)/g,'<span style="color:var(--sk-cmt)">$1</span>')
+    .replace(/(#[^\n]*)/g,'<span style="color:var(--sk-cmt)">$1</span>')
+    .replace(/(&quot;[^&]*?&quot;|"[^"]*?"|'[^']*?'|`[^`]*?`)/g,'<span style="color:var(--sk-str)">$1</span>')
+    .replace(kw,'<span style="color:var(--sk-kw)">$1</span>')
+    .replace(/\b([A-Z]\w*)\b/g,'<span style="color:var(--sk-type)">$1</span>')
+    .replace(/\b(\w+)(?=\s*\()/g,'<span style="color:var(--sk-fn)">$1</span>');
+}
+
+/* ── Overview renderers ── */
+function renderToday(s){
+  const el=document.getElementById('today-content'),h=s.hologram,ctx=s.ctxSavings||{daily:[],lifetime:[]},today=new Date().toISOString().slice(0,10);
+  const ht=h.today||(h.daily[0]?.date===today?h.daily[0]:null);
+  const ho=ht?.originalChars||0,ha=ht?.hologramChars||0;
+  const wd=ctx.daily.find(r=>r.date===today&&r.type==='wsmap'),pp=ctx.daily.find(r=>r.date===today&&r.type==='pinpoint');
+  const wo=wd?.original_chars||0,ws=wd?.saved_chars||0,po=pp?.original_chars||0,ps=pp?.saved_chars||0;
+  const orig=ho+wo+po,act=ha+(wo-ws)+(po-ps),sv=Math.max(0,orig-act),sp=pct(sv,orig);
+  if(!orig){el.innerHTML='<span class="empty">'+t('noData')+'</span>';return}
+  el.innerHTML=barRow(t('original'),100,fk(orig)+' tok','dim')+barRow(t('actual'),pct(act,orig),fk(act)+' tok','yellow')+barRow(t('saved'),sp,sp+'% ('+fk(sv)+' tok)','green');
+}
+function renderLifetime(s){
+  const el=document.getElementById('lifetime-content'),lt=s.hologram.lifetime,ctx=s.ctxSavings||{daily:[],lifetime:[]};
+  const hs=Math.max(0,lt.originalChars-lt.hologramChars),wm=ctx.lifetime.find(r=>r.type==='wsmap')?.total_saved_chars||0,pp=ctx.lifetime.find(r=>r.type==='pinpoint')?.total_saved_chars||0;
+  const total=hs+wm+pp,tok=Math.round(total/CTP),est=(tok/1000*0.003).toFixed(2);
+  el.innerHTML=`<div class="big-num">~${fk(total)} tok</div><div class="sub">${t('estValue')}: $${est}</div><div style="margin-top:8px"><div class="row-item"><span>${t('hologram')}</span><span>${fk(hs)} tok (${pct(hs,total)}%)</span></div><div class="row-item"><span>${t('wsmap')}</span><span>${fk(wm)} tok (${pct(wm,total)}%)</span></div><div class="row-item"><span>${t('pinpoint')}</span><span>${fk(pp)} tok (${pct(pp,total)}%)</span></div></div>`;
+}
+function renderHistory(s){
+  const el=document.getElementById('history-content'),h=s.hologram,ctx=s.ctxSavings||{daily:[],lifetime:[]},dm=new Map();
+  for(const d of h.daily)dm.set(d.date,{o:d.originalChars,s:d.originalChars-d.hologramChars});
+  for(const r of ctx.daily){const e=dm.get(r.date)||{o:0,s:0};dm.set(r.date,{o:e.o+r.original_chars,s:e.s+r.saved_chars})}
+  const days=[...dm.keys()].sort().reverse().slice(0,7),today=new Date().toISOString().slice(0,10);
+  if(!days.length){el.innerHTML='<span class="empty">'+t('noHistory')+'</span>';return}
+  el.innerHTML=days.map(d=>{const{o,s}=dm.get(d);const p=pct(s,o);return barRow(d===today?'Today':d.slice(5),p,p+'% &middot; '+fk(o)+'&rarr;'+fk(o-s),p>=70?'green':p>=40?'yellow':'dim')}).join('');
+}
+function renderImmune(s){
+  const el=document.getElementById('immune-content'),im=s.immune||{},sp=s.suppression||{};
+  el.innerHTML=`<div class="row-item"><span>${t('antibodies')}</span><span>${im.antibodies||0}</span></div><div class="row-item"><span>${t('autoHealed')}</span><span>${im.autoHealed||0}</span></div><div class="row-item"><span>${t('massSkipped')}</span><span>${sp.massEventsSkipped||0}</span></div><div class="row-item"><span>${t('dormant')}</span><span>${sp.dormantTransitions||0}</span></div>`;
+}
+function renderHeader(s){
+  document.getElementById('status-badge').className='badge live';document.getElementById('status-badge').textContent='LIVE';
+  const u=s.uptime,ut=u<60?u+'s':u<3600?Math.floor(u/60)+'m':Math.floor(u/3600)+'h '+Math.floor(u%3600/60)+'m';
+  document.getElementById('hdr-uptime').textContent='Uptime: '+ut;
+  document.getElementById('hdr-ecosystem').textContent=s.ecosystem?.primary||'--';
+  document.getElementById('hdr-port').textContent='Port '+location.port;
+}
+function render(s){renderHeader(s);renderToday(s);renderLifetime(s);renderHistory(s);renderImmune(s);document.getElementById('ft-updated').textContent=new Date().toLocaleTimeString()}
+
+/* ── Explorer ── */
+let allFiles=[],filesLoaded=false,activeFile=null;
+const dotCls=f=>{const e=f.split('.').pop();return{ts:'ts',tsx:'ts',js:'ts',jsx:'ts',py:'py',pyi:'py',go:'go',rs:'rs',json:'json',md:'md'}[e]||'other'};
+async function loadFiles(){
+  try{const r=await fetch('/files');const d=await r.json();allFiles=d.files||[];filesLoaded=true;renderFileList(allFiles)}
+  catch{document.getElementById('file-entries').innerHTML='<span class="empty">failed</span>'}
+}
+function filterFiles(){const q=document.getElementById('file-search').value.toLowerCase();renderFileList(q?allFiles.filter(f=>f.toLowerCase().includes(q)):allFiles)}
+function renderFileList(files){
+  const el=document.getElementById('file-entries');
+  if(!files.length){el.innerHTML='<span class="empty">no files</span>';return}
+  el.innerHTML=files.map(f=>`<div class="fitem${f===activeFile?' active':''}" onclick="selectFile('${f.replace(/'/g,"\\'")}')" title="${f}"><span class="dot ${dotCls(f)}"></span>${f}</div>`).join('');
+}
+async function selectFile(path){
+  activeFile=path;filterFiles();
+  const view=document.getElementById('holo-view'),meta=document.getElementById('holo-meta'),ndep=document.getElementById('ndepth-panel');
+  view.innerHTML='<span class="empty">'+t('loading')+'</span>';meta.textContent='';ndep.innerHTML='';
+  try{
+    const r=await fetch('/hologram?file='+encodeURIComponent(path)+'&nDepth=2');const d=await r.json();
+    if(d.error){view.innerHTML='<span class="empty">'+d.error+'</span>';return}
+    const parts=d.hologram.split('// [🔗 N-Depth Dependencies]');
+    const skeleton=parts[0].trim(),deps=parts[1]||'';
+    const lang=d.language||'typescript';
+    meta.innerHTML=`<strong>${path}</strong> &middot; ${lang} &middot; ${(d.originalLength/1024).toFixed(1)}KB &rarr; ${(d.hologramLength/1024).toFixed(1)}KB <span style="color:var(--green)">(${d.savings||0}% ${t('savePct')})</span>`;
+    view.innerHTML=highlight(skeleton,lang);
+    if(deps.trim()){
+      const lines=deps.trim().split('\n');let html='<div class="dep-section"><h3>'+t('nDepthDeps')+'</h3>';let cf='';
+      for(const line of lines){
+        const fm=line.match(/^\/\/ --- (.+) \(L(\d)\) ---$/);
+        if(fm){cf=fm[1];html+=`<div class="dep-file"><span class="tag l${fm[2]}">L${fm[2]}</span> ${cf}</div>`}
+        else if(line.trim()&&!line.startsWith('//')){html+=`<div class="dep-item" onclick="selectFile('${cf.replace(/'/g,"\\'")}')">${line.replace(/</g,'&lt;')}</div>`}
+      }
+      ndep.innerHTML=html+'</div>';
+    }
+  }catch(e){view.innerHTML='<span class="empty">'+e.message+'</span>'}
+}
+
+/* ── SSE + polling ── */
+let refreshTimer;
+async function load(){try{const s=await(await fetch('/score')).json();render(s)}catch{document.getElementById('status-badge').className='badge off';document.getElementById('status-badge').textContent='OFFLINE'}}
+const evLog=document.getElementById('events-log');let evStarted=false;
+function appendEvent(e){
+  if(!evStarted){evLog.innerHTML='';evStarted=true}
+  const cls={Sense:'sense',Extract:'extract',Adapt:'adapt',Mutate:'mutate'}[e.phase]||'sense';
+  const div=document.createElement('div');
+  div.innerHTML=`<span class="tag ${cls}">${e.phase}</span> ${e.msg} <span class="sub">${new Date(e.ts).toLocaleTimeString()}</span>`;
+  evLog.prepend(div);while(evLog.children.length>50)evLog.lastChild.remove();
+}
+load();
+const es=new EventSource('/events');
+es.onmessage=e=>{try{appendEvent(JSON.parse(e.data))}catch{};clearTimeout(refreshTimer);refreshTimer=setTimeout(load,500)};
+es.onerror=()=>{document.getElementById('status-badge').className='badge off';document.getElementById('status-badge').textContent='RECONNECTING'};
+setInterval(load,10000);
+</script>
+</body>
+</html>

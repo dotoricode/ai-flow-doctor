@@ -412,7 +412,29 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
     // ── Web Dashboard ──
     if (url.pathname === "/dashboard") {
       try {
-        const html = readFileSync(resolve(import.meta.dirname, "dashboard.html"), "utf-8");
+        let html = readFileSync(resolve(import.meta.dirname, "dashboard.html"), "utf-8");
+        const { getSystemLanguage } = await import("../core/locale");
+        const lang = getSystemLanguage();
+        const i18n = lang === "ko" ? {
+          todaySavings:"오늘의 절약량",lifetimeRoi:"누적 ROI",weekHistory:"최근 7일 내역",
+          immune:"면역 시스템",liveEvents:"실시간 이벤트",files:"파일 탐색",hologram:"홀로그램",
+          original:"원본",actual:"실제",saved:"절약",antibodies:"항체",autoHealed:"자동 치유",
+          massSkipped:"대량 이벤트 무시",dormant:"휴면 전환",estValue:"추정 가치",totalSaved:"총 절약량",
+          wsmap:"워크스페이스 맵",pinpoint:"핀포인트",noData:"afd_read 또는 afd_hologram 사용 시 추적 시작",
+          noHistory:"일별 기록 없음",searchFiles:"파일 검색...",selectFile:"조회할 파일을 선택하세요",
+          loading:"불러오는 중...",nDepthDeps:"N-Depth 종속성",overview:"개요",explorer:"홀로그램 탐색기",
+          savePct:"절약됨",lang:"ko"
+        } : {
+          todaySavings:"Today's Savings",lifetimeRoi:"Lifetime ROI",weekHistory:"7-Day History",
+          immune:"Immune System",liveEvents:"Live Events",files:"Files",hologram:"Hologram",
+          original:"Original",actual:"Actual",saved:"Saved",antibodies:"Antibodies",autoHealed:"Auto-healed",
+          massSkipped:"Mass events skipped",dormant:"Dormant transitions",estValue:"Est. Value",totalSaved:"Total Saved",
+          wsmap:"W/S Map",pinpoint:"Pinpoint",noData:"Use afd_read or afd_hologram to start tracking",
+          noHistory:"No daily history yet",searchFiles:"Search files...",selectFile:"Select a file to explore",
+          loading:"Loading...",nDepthDeps:"N-Depth Dependencies",overview:"Overview",explorer:"Hologram Explorer",
+          savePct:"saved",lang:"en"
+        };
+        html = html.replace("/*{{I18N}}*/", "window.T=" + JSON.stringify(i18n) + ";");
         return new Response(html, {
           headers: {
             "Content-Type": "text/html; charset=utf-8",

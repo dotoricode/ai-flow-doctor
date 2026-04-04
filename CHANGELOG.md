@@ -7,41 +7,73 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.0.0-dev.1] - 2026-04-04 — "Deep Context Engine"
+## [2.0.0] - 2026-04-04 — "Deep Context Engine"
 
-> afd becomes language-agnostic. Four languages. One immune system.
+> Language-agnostic immune system. Four languages. One dashboard. Zero config.
+
+This is afd's biggest release. The immune system now understands Python, Go, and Rust at the same depth as TypeScript. A full web dashboard ships in a single 18.7 KB HTML file — no CDN, no build step. Token estimation finally uses content-aware heuristics instead of the crude `chars ÷ 4` formula.
 
 ### Added
 
-- **Polyglot N-Depth Reachability** — cross-file call graph tracing for TS/JS, Python, Go, Rust
-  - Language-aware import resolvers: `from X import Y`, `import "pkg"`, `use crate::X`
-  - AST-based called-symbol extraction per language (Tree-sitter)
-  - `grammar-resolver.ts`: `detectLang()` auto-dispatches parser by extension
-  - Python: `__init__.py` package resolution, dotted module paths
-  - Go: package directory scanning, exported symbol matching (capitalized)
-  - Rust: `mod.rs` convention, `super::`/`crate::` path resolution
+#### N-Depth Cross-File Call Graph (TypeScript / Python / Go / Rust)
+- `traceCallGraph()` — AST-based cross-file symbol tracing to L2 (direct) and L3 (transitive)
+- `extractCalledSymbols()` — call_expression, type_identifier, JSX element detection per language
+- `extractSignature()` — word-boundary matching (`\b`) for accurate symbol extraction (no substring false-positives)
+- `grammar-resolver.ts` — `detectLang()` dispatches the correct Tree-sitter WASM per extension
+- Barrel file resolution: named + wildcard re-exports traced to their real source file
+- TSX/JSX AST stabilization: `tsx` grammar auto-selected for `.tsx`/`.jsx`, JSX tags extracted from `jsx_self_closing_element` / `jsx_opening_element`
+
+#### Smart Interceptor — `afd_read` Automation
+- Files > 10 KB → automatic hologram return (27 KB → 921 chars, 97% compression)
+- `afd_read_raw` new fallback tool — explicit full-body read when skeleton is insufficient
+- Guide message dynamically surfaces `startLine`/`endLine` and `afd_read_raw` options
+- `tools/call` responses: `cache_control` removed entirely (resource responses retain it)
+
+#### True Caching — `afd://hologram/{path}` MCP Resource
+- New MCP resource with `cache_control: { type: "ephemeral" }` for Anthropic prompt caching
+- `_knownHologramPaths` dynamic URI tracking + `list_changed` notification on new files
+- `afd_hologram` and `afd_read` tool descriptions updated to prefer resource reads
+
+#### Honest Token Metrics
+- `src/core/token-estimator.ts` — content-aware estimation engine covering 12 file extensions
+- Extension-specific conservative ratios (3.0–4.2) replace the discredited `chars ÷ 4` formula
+- `confidence: 'heuristic'` label surfaced in metrics output
+
+#### Web Dashboard (`GET /dashboard`)
+- **18.7 KB single-file HTML** — fully self-contained, zero external dependencies
+- **Tab 1 – Overview**: today's token savings (dual bar chart), lifetime ROI breakdown, 7-day history grid, immune system event log, live SSE event stream
+- **Tab 2 – Hologram Explorer**: file tree search, syntax-highlighted skeleton viewer, N-Depth dependency tree rendering
+- **i18n**: server-side injection of `window.T` (26 translation keys, ko/en auto-detected via `getSystemLanguage()`)
+- **Syntax highlight**: regex-lite engine covering TypeScript, Python, Go, Rust — no runtime deps
+- **Glassmorphism UI**: CSS variable system, `backdrop-filter`, GitHub Dark palette
+- **Large-project safe**: `/files` API hard-capped at 500 files, depth ≤ 4
+
+#### Polyglot N-Depth — Python / Go / Rust
+- Python: `from X import Y` + `__init__.py` package resolution, dotted module paths
+- Go: `import "./pkg"` + package directory scanning, exported symbol matching (capitalized identifiers)
+- Rust: `use crate::X` + `mod.rs` convention, `super::`/`crate::` path resolution
+
+#### Developer Experience
 - **`afd setup`** — interactive one-command project configuration
   - Y/n per step: daemon start → MCP register → CLAUDE.md inject → health check
-  - CLAUDE.md block teaches Claude to prefer `afd_read`/`afd_hologram`/`workspace-map`
+  - CLAUDE.md block teaches Claude to prefer `afd_read` / `afd_hologram` / `workspace-map`
   - Bilingual (EN/KO), idempotent (auto-skips already-configured steps)
-- **Responsive Dashboard TUI** — terminal-adaptive fullscreen layout
-  - Alt Screen Buffer (`\x1b[?1049h`) for clean fullscreen/restore
-  - 2-pass rendering: build sections → trim to fit `rows × cols`
-  - Windows/Warp: 1s PowerShell size polling (SIGWINCH fallback)
-  - Min-width 50 cols, progressive section collapse on short terminals
-- **npm Scoped Package** — published as `@dotoricode/afd`
-  - `npx @dotoricode/afd setup` works out of the box
+- **`@dotoricode/afd`** npm scoped package — `npx @dotoricode/afd setup` works everywhere
 
 ### Fixed
 
-- MCP install on Windows: `cmd /c npx` wrapper
-- Hook command fallback: `bunx`/`npx` → `@dotoricode/afd`
-- `rule-suggestion` test: disk SQLite → `:memory:` + indexes (6.85s → 245ms)
+- `extractSignature` substring match bug — searching `Button` no longer matches `ButtonProps`
+- JSX component miss in call graph — `<Button />`, `<Input />` are now detected
+- `.ts` files failing TSX parse — `tsx` grammar now applied to all `.ts`/`.tsx`
+- MCP install on Windows — `cmd /c npx` wrapper for Claude Code compatibility
+- Hook command fallback — `bunx`/`npx` now invokes `@dotoricode/afd` (not bare `afd`)
+- `rule-suggestion` test timeout — disk SQLite → in-memory + indexes (6.85s → 245ms)
 
 ### Meta
 
 - **217/217 tests passing** (zero-defect)
-- Build size: 138 KB (tarball)
+- Package: 147.8 KB tarball, 77 files
+- Dashboard: 18.7 KB single HTML (Phase 1–3 complete)
 
 ---
 
