@@ -83,6 +83,10 @@ export interface MessageDict {
   DAEMON_START_FAILED: string; // "{path}"
   DAEMON_RESTARTING: string;
 
+  // ── Web command ──
+  WEB_OPENING: string;           // "{url}"
+  WEB_BROWSER_FAILED: string;    // "{url}"
+
   // ── Setup checklist ──
   SETUP_HEADER: string;         // "{ecosystem}"
   SETUP_HOOKS_NEW: string;
@@ -182,6 +186,9 @@ const en: MessageDict = {
   DAEMON_START_FAILED: "[afd] Failed to start daemon. Check logs: {path}",
   DAEMON_RESTARTING: "[afd] 🔄 Restarting daemon...",
 
+  WEB_OPENING: "[afd] Opening dashboard: {url}",
+  WEB_BROWSER_FAILED: "[afd] Failed to open browser — open manually: {url}",
+
   SETUP_HEADER: "[afd] Setting up {ecosystem} ecosystem:",
   SETUP_HOOKS_NEW: "  [+] Hook injected into PreToolUse",
   SETUP_HOOKS_OK: "  [=] Hook already present",
@@ -279,6 +286,10 @@ const ko: MessageDict = {
   DAEMON_NOT_RESPONDING: "[afd] 데몬이 응답하지 않네요. 남은 PID 파일을 정리합니다.",
   DAEMON_START_FAILED: "[afd] 데몬 시작 실패. 로그를 확인해 보세요: {path}",
   DAEMON_RESTARTING: "[afd] 🔄 데몬을 재시작합니다...",
+
+  WEB_OPENING: "[afd] 대시보드 열기: {url}",
+  WEB_BROWSER_FAILED: "[afd] 브라우저 오픈 실패 — 직접 열어주세요: {url}",
+
 
   SETUP_HEADER: "[afd] {ecosystem} 에코시스템 설정 중:",
   SETUP_HOOKS_NEW: "  [+] PreToolUse 훅 주입 완료",

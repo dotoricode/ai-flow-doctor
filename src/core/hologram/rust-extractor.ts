@@ -1,12 +1,6 @@
 import type { Node, Tree } from "web-tree-sitter";
 import type { LanguageExtractor, HologramOptions } from "./types";
-
-/**
- * Collapse multiple whitespace/newlines into a single space.
- */
-function collapse(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
+import { collapse } from "./utils";
 
 /**
  * Stub a function body: slice source up to (but not including) the `block` node.

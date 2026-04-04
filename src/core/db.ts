@@ -7,6 +7,7 @@ export function initDb(): Database {
   mkdirSync(paths.afdDir, { recursive: true });
   const db = new Database(paths.dbFile);
   db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA busy_timeout = 3000");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS events (

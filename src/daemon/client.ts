@@ -43,6 +43,13 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/** Convenience: read the daemon port or throw. */
+export function getDaemonPort(): number {
+  const info = getDaemonInfo();
+  if (!info) throw new Error("Daemon not running. Run `afd start` first.");
+  return info.port;
+}
+
 export async function isDaemonAlive(info: DaemonInfo): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${info.port}/health`, {

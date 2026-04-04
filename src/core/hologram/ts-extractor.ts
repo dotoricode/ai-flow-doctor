@@ -1,5 +1,6 @@
 import type { Node, Tree } from "web-tree-sitter";
 import type { LanguageExtractor, HologramOptions } from "./types";
+import { collapse as collapseWhitespace } from "./utils";
 import { readFileSync } from "fs";
 
 /** Extract imported symbols from a context file using regex (L1 filtering) */
@@ -278,9 +279,6 @@ function extractTypeAlias(node: Node): string {
   return isExport + collapseWhitespace(node.text);
 }
 
-function collapseWhitespace(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
 
 /** Process a single top-level statement */
 function extractTopLevel(node: Node, source: string): string | null {

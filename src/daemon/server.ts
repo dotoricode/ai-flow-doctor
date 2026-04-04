@@ -142,8 +142,8 @@ export function main(options: DaemonOptions = {}) {
 
   // Hologram stats
   const getLifetime = db.prepare("SELECT total_requests, total_original_chars, total_hologram_chars FROM hologram_lifetime WHERE id = 1");
-  const updateLifetime = db.prepare(
-    "UPDATE hologram_lifetime SET total_requests = ?, total_original_chars = ?, total_hologram_chars = ? WHERE id = 1"
+  const incrementLifetime = db.prepare(
+    "UPDATE hologram_lifetime SET total_requests = total_requests + 1, total_original_chars = total_original_chars + ?, total_hologram_chars = total_hologram_chars + ? WHERE id = 1"
   );
   const upsertDaily = db.prepare(`
     INSERT INTO hologram_daily (date, requests, original_chars, hologram_chars) VALUES (?, ?, ?, ?)
@@ -250,9 +250,12 @@ export function main(options: DaemonOptions = {}) {
     state.hologramStats.sessionOriginalChars += originalChars;
     state.hologramStats.sessionHologramChars += hologramChars;
     try {
-      const hs = state.hologramStats;
-      updateLifetime.run(hs.totalRequests, hs.totalOriginalChars, hs.totalHologramChars);
-      upsertDaily.run(today(), 1, originalChars, hologramChars);
+      // Only persist to DB when actual compression occurred — prevents savings dilution
+      // Small files (< 10KB) are returned in full with (n, n), which would dilute savings % toward 0
+      if (originalChars > hologramChars) {
+        incrementLifetime.run(originalChars, hologramChars);
+        upsertDaily.run(today(), 1, originalChars, hologramChars);
+      }
       purgeOldDaily.run();
     } catch (err) {
       console.error("[afd] Failed to persist hologram stats:", err instanceof Error ? err.message : String(err));
