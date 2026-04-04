@@ -15,6 +15,7 @@ import { evolutionCommand } from "./commands/evolution";
 import { mcpCommand } from "./commands/mcp";
 import { hooksCommand } from "./commands/hooks";
 import { pluginCommand } from "./commands/plugin";
+import { setupCommand } from "./commands/setup";
 import { APP_VERSION } from "./version";
 import { trackCliCommand } from "./core/telemetry";
 
@@ -30,6 +31,11 @@ program.hook("preAction", (thisCommand) => {
 });
 
 // ── Core Commands (Magic 5 + alpha) ──────────────────────────────────────────
+
+program
+  .command("setup")
+  .description("Interactive one-command setup — daemon, MCP, CLAUDE.md, health check")
+  .action(setupCommand);
 
 program
   .command("start")
