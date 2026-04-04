@@ -60,7 +60,10 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         total_defenses: ctx.state.autoHealCount,
         defense_reasons: [...reasonSet],
         latest_defense: latestDefense,
-        saved_tokens_k: Math.round(estimateTokenSavings(ctx.state.hologramStats.totalOriginalChars, ctx.state.hologramStats.totalHologramChars) / 100) / 10,
+        saved_tokens_k: (() => {
+          const lt = ctx.getHologramLifetime.get();
+          return lt ? Math.round(estimateTokenSavings(lt.total_original_chars, lt.total_hologram_chars) / 100) / 10 : 0;
+        })(),
         session_saved_tokens_k: sessionSavedTokensK,
       });
     }
@@ -256,9 +259,13 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
       const uptime = Math.floor((Date.now() - ctx.state.startedAt) / 1000);
       const eventCount = ctx.db.query("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
       const abCount = ctx.countAntibodies.get() as { cnt: number };
-      const hs = ctx.state.hologramStats;
-      const globalSavings = hs.totalOriginalChars > 0
-        ? Math.round((hs.totalOriginalChars - hs.totalHologramChars) / hs.totalOriginalChars * 1000) / 10
+      // Read hologram lifetime from DB (not in-memory state) — MCP process writes to DB, HTTP daemon's state is stale
+      const lt = ctx.getHologramLifetime.get() as { total_requests: number; total_original_chars: number; total_hologram_chars: number } | null;
+      const ltRequests = lt?.total_requests ?? 0;
+      const ltOriginal = lt?.total_original_chars ?? 0;
+      const ltHologram = lt?.total_hologram_chars ?? 0;
+      const globalSavings = ltOriginal > 0
+        ? Math.round((ltOriginal - ltHologram) / ltOriginal * 1000) / 10
         : 0;
       const dailyRows = ctx.getDailyAll.all() as { date: string; requests: number; original_chars: number; hologram_chars: number }[];
       const todayRow = dailyRows.find(r => r.date === ctx.today());
@@ -273,7 +280,7 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         watchedFiles: [...ctx.state.watchedFiles],
         watchTargets: ctx.discoveryTargets,
         hologram: {
-          lifetime: { requests: hs.totalRequests, originalChars: hs.totalOriginalChars, hologramChars: hs.totalHologramChars, savings: globalSavings },
+          lifetime: { requests: ltRequests, originalChars: ltOriginal, hologramChars: ltHologram, savings: globalSavings },
           today: todayRow ? {
             requests: todayRow.requests, originalChars: todayRow.original_chars, hologramChars: todayRow.hologram_chars,
             savings: todayRow.original_chars > 0 ? Math.round((todayRow.original_chars - todayRow.hologram_chars) / todayRow.original_chars * 1000) / 10 : 0,
@@ -363,8 +370,8 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
     if (url.pathname === "/shift-summary") {
       const uptime = Math.floor((Date.now() - ctx.state.startedAt) / 1000);
       const eventCount = ctx.db.query("SELECT COUNT(*) as cnt FROM events").get() as { cnt: number };
-      const hs = ctx.state.hologramStats;
-      const hologramSavedChars = Math.max(0, hs.totalOriginalChars - hs.totalHologramChars);
+      const shiftLt = ctx.getHologramLifetime.get() as { total_original_chars: number; total_hologram_chars: number } | null;
+      const hologramSavedChars = shiftLt ? Math.max(0, shiftLt.total_original_chars - shiftLt.total_hologram_chars) : 0;
       return Response.json(buildShiftSummary({
         uptimeSeconds: uptime, totalEvents: eventCount.cnt, healsPerformed: ctx.state.autoHealCount,
         totalFileBytesSaved: ctx.state.totalFileBytesSaved, suppressionsSkipped: ctx.state.suppressionSkippedCount,
@@ -377,9 +384,20 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         return Response.json({ error: "Too many SSE clients" }, { status: 429 });
       }
       let sseController: ReadableStreamDefaultController<Uint8Array> | null = null;
+      let heartbeat: ReturnType<typeof setInterval> | null = null;
       const stream = new ReadableStream<Uint8Array>({
-        start(controller) { sseController = controller; ctx.state.sseClients.add(controller); },
-        cancel() { if (sseController) ctx.state.sseClients.delete(sseController); },
+        start(controller) {
+          sseController = controller;
+          ctx.state.sseClients.add(controller);
+          // SSE heartbeat: prevent browser auto-disconnect
+          heartbeat = setInterval(() => {
+            try { controller.enqueue(new TextEncoder().encode(": heartbeat\n\n")); } catch { /* closed */ }
+          }, 15_000);
+        },
+        cancel() {
+          if (heartbeat) clearInterval(heartbeat);
+          if (sseController) ctx.state.sseClients.delete(sseController);
+        },
       });
       return new Response(stream, {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" },
@@ -417,28 +435,38 @@ export function createHttpHandler(ctx: DaemonContext, cleanup: () => void) {
         const lang = getSystemLanguage();
         const i18n = lang === "ko" ? {
           todaySavings:"오늘의 절약량",lifetimeRoi:"누적 ROI",weekHistory:"최근 7일 내역",
+          savingsBreakdown:"절약 내역",lifetimeBreakdown:"누적 내역",
           immune:"면역 시스템",liveEvents:"실시간 이벤트",files:"파일 탐색",hologram:"홀로그램",
           original:"원본",actual:"실제",saved:"절약",antibodies:"항체",autoHealed:"자동 치유",
           massSkipped:"대량 이벤트 무시",dormant:"휴면 전환",estValue:"추정 가치",totalSaved:"총 절약량",
           wsmap:"워크스페이스 맵",pinpoint:"핀포인트",noData:"afd_read 또는 afd_hologram 사용 시 추적 시작",
-          noHistory:"일별 기록 없음",searchFiles:"파일 검색...",selectFile:"조회할 파일을 선택하세요",
-          loading:"불러오는 중...",nDepthDeps:"N-Depth 종속성",overview:"개요",explorer:"홀로그램 탐색기",
-          savePct:"절약됨",lang:"ko"
+          noHistory:"일별 기록 없음",searchFiles:"파일 검색...",
+          loading:"불러오는 중...",nDepthDeps:"N-Depth 종속성",overview:"개요",explorer:"컨텍스트 압축기",
+          savePct:"절약됨",uptime:"가동 시간",compression:"압축률",
+          holoWhat:"홀로그램이란?",holoDesc:"함수 본문을 제거하고 타입 시그니처만 남겨 LLM 토큰을 80% 이상 절약하는 코드 압축 기술입니다.",
+          holoHowLabel:"작동 방식",holoStep1:"원본 코드를 AST로 파싱",holoStep2:"함수/클래스 본문 제거",holoStep3:"시그니처만 남겨 전달",
+          selectFile:"왼쪽에서 파일을 선택하세요",rawFile:"원문 전달",astNotSupported:"AST 압축 미지원",trimmed:"본문 생략",
+          lang:"ko"
         } : {
           todaySavings:"Today's Savings",lifetimeRoi:"Lifetime ROI",weekHistory:"7-Day History",
+          savingsBreakdown:"Savings Breakdown",lifetimeBreakdown:"Lifetime Breakdown",
           immune:"Immune System",liveEvents:"Live Events",files:"Files",hologram:"Hologram",
           original:"Original",actual:"Actual",saved:"Saved",antibodies:"Antibodies",autoHealed:"Auto-healed",
           massSkipped:"Mass events skipped",dormant:"Dormant transitions",estValue:"Est. Value",totalSaved:"Total Saved",
           wsmap:"W/S Map",pinpoint:"Pinpoint",noData:"Use afd_read or afd_hologram to start tracking",
-          noHistory:"No daily history yet",searchFiles:"Search files...",selectFile:"Select a file to explore",
-          loading:"Loading...",nDepthDeps:"N-Depth Dependencies",overview:"Overview",explorer:"Hologram Explorer",
-          savePct:"saved",lang:"en"
+          noHistory:"No daily history yet",searchFiles:"Search files...",
+          loading:"Loading...",nDepthDeps:"N-Depth Dependencies",overview:"Overview",explorer:"Context Compressor",
+          savePct:"saved",uptime:"Uptime",compression:"Compression",
+          holoWhat:"What is a Hologram?",holoDesc:"A code compression technique that strips function bodies and keeps only type signatures, saving 80%+ LLM tokens.",
+          holoHowLabel:"How it works",holoStep1:"Parse source code into AST",holoStep2:"Strip function & class bodies",holoStep3:"Return signatures only",
+          selectFile:"Select a file from the tree",rawFile:"Raw text",astNotSupported:"AST compression not supported",trimmed:"body trimmed",
+          lang:"en"
         };
         html = html.replace("/*{{I18N}}*/", "window.T=" + JSON.stringify(i18n) + ";");
         return new Response(html, {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
-            "Content-Security-Policy": "default-src 'self' 'unsafe-inline'",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://cdn.tailwindcss.com",
           },
         });
       } catch {
